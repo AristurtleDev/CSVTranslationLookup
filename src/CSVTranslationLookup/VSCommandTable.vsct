@@ -1,0 +1,17 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<CommandTable xmlns="http://schemas.microsoft.com/VisualStudio/2005-10-18/CommandTable" xmlns:xs="http://www.w3.org/2001/XMLSchema">
+
+  <Extern href="stdidcmd.h"/>
+  <Extern href="vsshlids.h"/>
+  <Include href="KnownImageIds.vsct"/>
+  <Include href="VSGlobals.vsct"/>
+
+  <Commands package="CSVTranslationLookup">
+  </Commands>
+
+  <Symbols>
+    <GuidSymbol name="CSVTranslationLookup" value="{383c26cb-36d6-410f-b914-aed143675574}">
+      
+    </GuidSymbol>
+  </Symbols>
+</CommandTable>
