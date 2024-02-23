@@ -1,4 +1,4 @@
-# CVS Translation Lookup
+# CSV Translation Lookup
 (i have no better name)
 
 ## Description
