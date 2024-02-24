@@ -12,6 +12,6 @@ namespace CSVTranslationLookup
 {
     internal class Constants
     {
-        public const string CONFIGURATION_FILENAME = "cvsconfig.json";
+        public const string CONFIGURATION_FILENAME = "csvconfig.json";
     }
 }

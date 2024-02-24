@@ -4,6 +4,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Threading;
 using Community.VisualStudio.Toolkit;
+using CSVTranslationLookup.Helpers;
 using EnvDTE;
 using EnvDTE80;
 using Microsoft.VisualStudio;
@@ -21,6 +22,7 @@ namespace CSVTranslationLookup
         private static Dispatcher s_dispatcher;
         private static DTE2 s_dte;
         public static DTE2 DTE => s_dte ?? (s_dte = GetGlobalService(typeof(DTE)) as DTE2);
+        public static Dispatcher Dispatcher => s_dispatcher ?? (Dispatcher.CurrentDispatcher);
         public static Package Package;
 
         protected override async Task InitializeAsync(CancellationToken cancellationToken, IProgress<ServiceProgressData> progress)
@@ -32,11 +34,18 @@ namespace CSVTranslationLookup
             Package = this;
 
             Logger.Initialize(this, Vsix.Name);
+
+            //  Search for an existing configuration file in any projects within the solution.
+            //  If one is found, process it to begin with.
+            if(SolutionHelpers.TryGetExistingConfigFile(out string configFile))
+            {
+                CSVTranslationLookupService.ProcessConfig(configFile);
+            }
         }
 
         public static void StatusText(string message)
         {
-            s_dispatcher.BeginInvoke(() =>
+            Dispatcher?.BeginInvoke(() =>
             {
                 s_dte.StatusBar.Text = message;
             }, DispatcherPriority.ApplicationIdle, null);

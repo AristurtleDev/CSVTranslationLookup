@@ -65,7 +65,7 @@ namespace CSVTranslationLookup.Configuration
         public DirectoryInfo GetAbsoluteWatchDirectory()
         {
             string dir = new FileInfo(FileName).DirectoryName;
-            return new DirectoryInfo(Path.Combine(dir, WatchPath.Replace('/', '\\')));
+            return new DirectoryInfo(Path.GetFullPath(dir + WatchPath.Replace('/', '\\')));
         }
     }
 }
