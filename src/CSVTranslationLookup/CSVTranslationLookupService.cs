@@ -15,7 +15,7 @@ namespace CSVTranslationLookup
 {
     internal static class CSVTranslationLookupService
     {
-        private static string s_configFile;
+        private static Config s_config;
         private static DTE2 _dte;
 
         private static ConfigFileProcessor _configProcessor;
@@ -51,6 +51,9 @@ namespace CSVTranslationLookup
 
         public static Dictionary<string, CSVItem> Items { get; } = new Dictionary<string, CSVItem>();
 
+        public static Config Config => s_config;
+        
+
         private static void CSVProcessed(object sender, CSVProcessedEventArgs e)
         {
             foreach(var kvp in e.Items)
@@ -81,7 +84,7 @@ namespace CSVTranslationLookup
             //  If we have already loaded a configuration file previously either during the initialization of this
             //  extension or after one was created in a project, and this new configuraiton file is not the same
             //  file as the one we're already using, then we ignore.  Only use one configuration file.
-            if(!string.IsNullOrEmpty(s_configFile) && !s_configFile.Equals(configFile, StringComparison.InvariantCultureIgnoreCase))
+            if(Config is not null && Config.FileName.Equals(Path.GetFileName(configFile), StringComparison.InvariantCultureIgnoreCase))
             {
                 return;
             }
@@ -117,7 +120,7 @@ namespace CSVTranslationLookup
         {
             //  Tell the CSV Proessor to process the CSV files at this point.
             CSVTranslationLookupPackage.StatusText("Config file processed");
-            s_configFile = e.Config.FileName;
+            s_config = e.Config;
 
             DirectoryInfo dir = e.Config.GetAbsoluteWatchDirectory();
             FileInfo[] csvFiles = dir.GetFiles("*.csv", SearchOption.AllDirectories);
