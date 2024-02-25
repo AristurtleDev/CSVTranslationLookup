@@ -112,7 +112,6 @@ namespace CSVTranslationLookup.Sources
             }
         }
 
-
         public void Dispose()
         {
             if (!_isDisposed)

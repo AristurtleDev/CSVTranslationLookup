@@ -11,7 +11,6 @@ namespace CSVTranslationLookup.Configuration
         /// </summary>
         public Config Config { get; }
 
-
         public ConfigProcessedEventArgs(Config config)
         {
             Config = config;

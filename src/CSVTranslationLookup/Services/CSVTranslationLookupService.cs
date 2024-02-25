@@ -52,10 +52,7 @@ namespace CSVTranslationLookup.Services
         }
 
         public static Dictionary<string, CSVItem> Items { get; } = new Dictionary<string, CSVItem>();
-
         public static Config Config => s_config;
-
-
 
         private static void CSVProcessed(object sender, CSVProcessedEventArgs e)
         {
