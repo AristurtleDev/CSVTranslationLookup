@@ -8,6 +8,7 @@ using System.Diagnostics;
 using System.IO;
 using CSVTranslationLookup.CSV;
 using CSVTranslationLookup.Providers;
+using CSVTranslationLookup.Services;
 using Microsoft.VisualStudio.Core.Imaging;
 using Microsoft.VisualStudio.Imaging;
 using Microsoft.VisualStudio.Language.Intellisense;

@@ -50,7 +50,7 @@
     <Compile Include="Configuration\ConfigProcessedEventArgs.cs" />
     <Compile Include="Constants.cs" />
     <Compile Include="Controllers\KeywordInfoController.cs" />
-    <Compile Include="CSVTranslationLookupService.cs" />
+    <Compile Include="Services\CSVTranslationLookupService.cs" />
     <Compile Include="CSV\CSVItem.cs" />
     <Compile Include="CSV\CSVProcessor.cs" />
     <Compile Include="CSV\CSVProcessedEventArgs.cs" />
@@ -61,7 +61,6 @@
     <Compile Include="CSVTranslationLookupPackage.cs" />
     <Compile Include="Providers\KeywordInfoControllerProvider.cs" />
     <Compile Include="Providers\KeywordInfoSourceProvider.cs" />
-    <Compile Include="Services\LookupItemService.cs" />
     <Compile Include="source.extension.cs">
       <AutoGen>True</AutoGen>
       <DesignTime>True</DesignTime>

@@ -5,6 +5,7 @@
 using System;
 using System.ComponentModel.Composition;
 using System.IO;
+using CSVTranslationLookup.Services;
 using Microsoft.VisualStudio.Editor;
 using Microsoft.VisualStudio.Text;
 using Microsoft.VisualStudio.Text.Editor;

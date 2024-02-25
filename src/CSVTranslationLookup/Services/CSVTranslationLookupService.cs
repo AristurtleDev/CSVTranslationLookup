@@ -12,7 +12,7 @@ using CSVTranslationLookup.Configuration;
 using CSVTranslationLookup.CSV;
 using EnvDTE80;
 
-namespace CSVTranslationLookup
+namespace CSVTranslationLookup.Services
 {
     internal static class CSVTranslationLookupService
     {

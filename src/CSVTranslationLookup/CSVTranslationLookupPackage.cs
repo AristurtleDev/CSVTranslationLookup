@@ -5,6 +5,7 @@ using System.Threading.Tasks;
 using System.Windows.Threading;
 using Community.VisualStudio.Toolkit;
 using CSVTranslationLookup.Helpers;
+using CSVTranslationLookup.Services;
 using EnvDTE;
 using EnvDTE80;
 using Microsoft.VisualStudio;
