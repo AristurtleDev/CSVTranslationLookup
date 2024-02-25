@@ -4,13 +4,14 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
+using CSVTranslationLookup.CSV;
 using CSVTranslationLookup.Providers;
 using CSVTranslationLookup.Services;
 using Microsoft.VisualStudio.Core.Imaging;
 using Microsoft.VisualStudio.Imaging;
 using Microsoft.VisualStudio.Language.Intellisense;
-using Microsoft.VisualStudio.Shell;
 using Microsoft.VisualStudio.Text;
 using Microsoft.VisualStudio.Text.Adornments;
 using Microsoft.VisualStudio.Text.Operations;
@@ -32,17 +33,6 @@ namespace CSVTranslationLookup.Sources
             _subjectBuffer = subjectBuffer;
         }
 
-        //-------------------------------------------------------------------------------------------------------------
-        //  Somtimes the service isn't avaialbel in the packages global services for a few cycles, which can lead
-        //  to it always being null if a word is hovered for the first time and the service has not registerd.  To
-        //  prevent that, this method was created.
-        //-------------------------------------------------------------------------------------------------------------
-        private bool TryGetLookupService(out LookupItemService service)
-        {
-            service = Package.GetGlobalService(typeof(LookupItemService)) as LookupItemService;
-            return service is not null;
-        }
-
         public void AugmentQuickInfoSession(IQuickInfoSession session, IList<object> qiContent, out ITrackingSpan applicableToSpan)
         {
             applicableToSpan = null;
@@ -62,7 +52,7 @@ namespace CSVTranslationLookup.Sources
                 //  Replace any surrounding quotations so this works with and without quoted keywords
                 string searchText = extent.Span.GetText().Replace("\"", "");
 
-                if (TryGetLookupService(out LookupItemService lookupService) && lookupService.TryGetItem(searchText, out LookupItem item))
+                if (CSVTranslationLookupService.Items.TryGetValue(searchText, out CSVItem item))
                 {
                     applicableToSpan = currentSnapshot.CreateTrackingSpan(extent.Span.Start, searchText.Length, SpanTrackingMode.EdgeInclusive);
 
@@ -87,11 +77,27 @@ namespace CSVTranslationLookup.Sources
                             new ImageElement(_tableIcon),
                             ClassifiedTextElement.CreateHyperlink("Open Containing CSV", item.FilePath, () =>
                             {
-                                string cwd = Path.GetDirectoryName(lookupService.Settings.OpenWith);
-                                var process = new System.Diagnostics.Process();
-                                process.StartInfo.WorkingDirectory = cwd;
-                                process.StartInfo.FileName = lookupService.Settings.OpenWith;
-                                process.StartInfo.Arguments = string.Format("{0} {1}", item.FilePath, lookupService.Settings.Arguments);
+                                ProcessStartInfo startInfo = new ProcessStartInfo();
+                                if (!string.IsNullOrEmpty(CSVTranslationLookupService.Config.OpenWith))
+                                {
+                                    startInfo.WorkingDirectory = Path.GetDirectoryName(CSVTranslationLookupService.Config.OpenWith);
+                                    startInfo.FileName = CSVTranslationLookupService.Config.OpenWith;
+                                    startInfo.Arguments = item.FilePath;
+
+                                    string additionalArguments = CSVTranslationLookupService.Config.Arguments;
+                                    if (!string.IsNullOrEmpty(additionalArguments))
+                                    {
+                                        additionalArguments = additionalArguments.Replace("{linenum}", $"{item.LineNumber}");
+                                        startInfo.Arguments += $" {additionalArguments}";
+                                    }
+                                }
+                                else
+                                {
+                                    startInfo.FileName = item.FilePath;
+                                }
+
+                                Process process = new Process();
+                                process.StartInfo = startInfo;
                                 process.Start();
                             }));
 
@@ -105,7 +111,6 @@ namespace CSVTranslationLookup.Sources
                 }
             }
         }
-
 
         public void Dispose()
         {

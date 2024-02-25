@@ -9,10 +9,10 @@ namespace CSVTranslationLookup
     {
         public const string Id = "CSVTranslationLookup.fa071463-3e37-49ad-a204-456ecde95eb1";
         public const string Name = "CSVTranslationLookup";
-        public const string Description = @"Empty VSIX Project.";
+        public const string Description = @"A specialized Visual Studio extension for linking keyword tokens with keys from multiple CSV files, allow users to hover over matching keyword tokens in code files to get relavant information about that key in its CSV file and offer a quick way to open that CSV file to edit.";
         public const string Language = "en-US";
-        public const string Version = "1.0";
-        public const string Author = "Christopher WHitley";
+        public const string Version = "0.0.2";
+        public const string Author = "Christopher Whitley";
         public const string Tags = "";
     }
 }

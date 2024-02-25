@@ -45,14 +45,22 @@
     <WarningLevel>4</WarningLevel>
   </PropertyGroup>
   <ItemGroup>
-    <Compile Include="Configuration\CSVTranslationLookupSettings.cs" />
+    <Compile Include="Configuration\Config.cs" />
+    <Compile Include="Configuration\ConfigFileProcessor.cs" />
+    <Compile Include="Configuration\ConfigProcessedEventArgs.cs" />
+    <Compile Include="Constants.cs" />
     <Compile Include="Controllers\KeywordInfoController.cs" />
-    <Compile Include="LookupItem.cs" />
+    <Compile Include="Services\CSVTranslationLookupService.cs" />
+    <Compile Include="CSV\CSVItem.cs" />
+    <Compile Include="CSV\CSVProcessor.cs" />
+    <Compile Include="CSV\CSVProcessedEventArgs.cs" />
+    <Compile Include="FIleListeners\JsonCreationFileListener.cs" />
+    <Compile Include="Helpers\SolutionHelpers.cs" />
+    <Compile Include="Logger.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
     <Compile Include="CSVTranslationLookupPackage.cs" />
     <Compile Include="Providers\KeywordInfoControllerProvider.cs" />
     <Compile Include="Providers\KeywordInfoSourceProvider.cs" />
-    <Compile Include="Services\LookupItemService.cs" />
     <Compile Include="source.extension.cs">
       <AutoGen>True</AutoGen>
       <DesignTime>True</DesignTime>
@@ -73,6 +81,10 @@
     </Compile>
   </ItemGroup>
   <ItemGroup>
+    <Content Include="Resources\LICENSE.txt">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+      <IncludeInVSIX>true</IncludeInVSIX>
+    </Content>
     <None Include="source.extension.vsixmanifest">
       <SubType>Designer</SubType>
       <Generator>VsixManifestGenerator</Generator>
@@ -92,6 +104,7 @@
     <Reference Include="System.Data.DataSetExtensions" />
     <Reference Include="System.Design" />
     <Reference Include="System.ComponentModel.Composition" />
+    <Reference Include="System.Windows.Forms" />
     <Reference Include="System.Xaml" />
     <Reference Include="System.Xml" />
     <Reference Include="WindowsBase" />
