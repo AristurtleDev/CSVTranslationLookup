@@ -13,8 +13,14 @@ namespace CSVTranslationLookup.CSV
         /// </summary>
         public Dictionary<string, CSVItem> Items { get; }
 
-        public CSVProcessedEventArgs(Dictionary<string, CSVItem> items)
+        /// <summary>
+        /// Gets the path to the file that was procesed.
+        /// </summary>
+        public string FilePath { get; set; }
+
+        public CSVProcessedEventArgs(string filePath, Dictionary<string, CSVItem> items)
         {
+            FilePath = filePath;
             Items = items;
         }
     }

@@ -5,11 +5,13 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Threading;
 using System.Windows.Forms;
 using CSVTranslationLookup.Configuration;
 using CSVTranslationLookup.CSV;
 using EnvDTE80;
+using Microsoft.VisualStudio.Shell.Interop;
 
 namespace CSVTranslationLookup
 {
@@ -20,6 +22,7 @@ namespace CSVTranslationLookup
 
         private static ConfigFileProcessor _configProcessor;
         private static CSVProcessor _csvProcessor;
+        private static FileSystemWatcher _csvWatcher;
 
         private static ConfigFileProcessor ConfigProcessor
         {
@@ -54,17 +57,14 @@ namespace CSVTranslationLookup
         public static Config Config => s_config;
         
 
+
         private static void CSVProcessed(object sender, CSVProcessedEventArgs e)
         {
             foreach(var kvp in e.Items)
             {
                 if (Items.ContainsKey(kvp.Key))
                 {
-                    if (!Items[kvp.Key].FilePath.Equals(kvp.Value.FilePath, StringComparison.InvariantCultureIgnoreCase))
-                    {
-                        Logger.Log($"Duplicate key '{kvp.Key}' found in '{kvp.Value.FilePath}' that exists in another file '{Items[kvp.Key].FilePath}'.  Value will be overridden with newest key.");
-                    }
-
+                    //  Will overwrite the item if the key is duplicated in multiple files.
                     Items[kvp.Key] = kvp.Value;
                 }
                 else
@@ -123,15 +123,105 @@ namespace CSVTranslationLookup
             s_config = e.Config;
 
             DirectoryInfo dir = e.Config.GetAbsoluteWatchDirectory();
-            FileInfo[] csvFiles = dir.GetFiles("*.csv", SearchOption.AllDirectories);
-            for(int i =0; i < csvFiles.Length; i++)
+            if (_csvWatcher is null)
             {
-                Logger.LogProgress(true, $"Processing CSV Files {i+1}/{csvFiles.Length}", i, csvFiles.Length);
-                CSVProcessor.Process(csvFiles[i].FullName, e.Config);
+                _csvWatcher = new FileSystemWatcher(dir.FullName, "*.csv");
+                _csvWatcher.NotifyFilter = NotifyFilters.CreationTime | NotifyFilters.LastWrite | NotifyFilters.FileName;
+                _csvWatcher.Changed += CSVChanged;
+                _csvWatcher.Created += CSVCreated;
+                _csvWatcher.Deleted += CSVDeleted;
+                _csvWatcher.Renamed += CSVRenamed;
+                _csvWatcher.EnableRaisingEvents = true;
+            }
+            FileInfo[] csvFiles = dir.GetFiles("*.csv", SearchOption.AllDirectories);
+            for (int i = 0; i < csvFiles.Length; i++)
+            {
+                Logger.LogProgress(true, $"Processing CSV Files {i + 1}/{csvFiles.Length}", i, csvFiles.Length);
+                CSVProcessor.Process(csvFiles[i].FullName);
             }
             Logger.LogProgress(false);
         }
 
+        private static void CSVDeleted(object sender, FileSystemEventArgs e)
+        {
+            if (e.ChangeType != WatcherChangeTypes.Deleted)
+            {
+                return;
+            }
+
+            Logger.Log($"'{e.FullPath}' was deleted, removing all entries associted with that file");
+
+            IList<string> keysToRemove = Items.Where(kvp => kvp.Value.FilePath == e.FullPath)
+                                              .Select(kvp => kvp.Key)
+                                              .ToList();
+
+            foreach(string key in keysToRemove)
+            {
+                Items.Remove(key);
+            }
+        }
+
+        private static void CSVChanged(object sender, FileSystemEventArgs e)
+        {
+            if (e.ChangeType != WatcherChangeTypes.Changed)
+            {
+                return;
+            }
+
+            FileInfo file = new FileInfo(e.FullPath);
+            if (!file.Exists)
+            {
+                return;
+            }
+
+            CSVProcessor.Process(e.FullPath);
+            Logger.Log($"'{e.FullPath}' was updated, updating entries");
+        }
+
+        private static void CSVCreated(object sender, FileSystemEventArgs e)
+        {
+            if (e.ChangeType != WatcherChangeTypes.Created)
+            {
+                return;
+            }
+
+            FileInfo file = new FileInfo(e.FullPath);
+            if (!file.Exists)
+            {
+                return;
+            }
+
+            CSVProcessor.Process(e.FullPath);
+            Logger.Log($"'{e.FullPath}' was created, updating entries");
+        }
+
+        private static void CSVRenamed(object sender, RenamedEventArgs e)
+        {
+            if(e.ChangeType != WatcherChangeTypes.Renamed)
+            {
+                return;
+            }
+
+            FileInfo file = new FileInfo(e.FullPath);
+            if(!file.Exists)
+            {
+                return;
+            }
+
+            Logger.Log($"'{e.OldFullPath}' was renamed, updating filepath for all entities associted with that file");
+
+            IList<string> keysToChange = Items.Where(kvp => kvp.Value.FilePath == e.OldFullPath)
+                                              .Select(kvp => kvp.Key)
+                                              .ToList();
+
+            foreach (string key in keysToChange)
+            {
+                Items[key].FilePath = e.FullPath;
+            }
+
+
+
+        }
         private static void ShowError(string configFile)
         {
             MessageBox.Show

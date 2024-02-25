@@ -64,8 +64,13 @@ namespace CSVTranslationLookup.Configuration
         /// <returns>The fully-qualified absolute path to the watch directory.</returns>
         public DirectoryInfo GetAbsoluteWatchDirectory()
         {
-            string dir = new FileInfo(FileName).DirectoryName;
-            return new DirectoryInfo(Path.GetFullPath(dir + WatchPath.Replace('/', '\\')));
+            string path = new FileInfo(FileName).DirectoryName;
+            if (!string.IsNullOrEmpty(WatchPath))
+            {
+                path = Path.GetFullPath(path + WatchPath.Replace('/', '\\'));
+            }
+
+            return new DirectoryInfo(path);
         }
     }
 }

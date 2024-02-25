@@ -6,7 +6,6 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Text;
-using CSVTranslationLookup.Configuration;
 
 namespace CSVTranslationLookup.CSV
 {
@@ -14,8 +13,14 @@ namespace CSVTranslationLookup.CSV
     {
         public event EventHandler<CSVProcessedEventArgs> CSVProcessed;
 
-        public void Process(string filePath, Config config)
+        public void Process(string filePath)
         {
+            char delimiter = ',';
+            if (!string.IsNullOrEmpty(CSVTranslationLookupService.Config.Delimiter))
+            {
+                delimiter = CSVTranslationLookupService.Config.Delimiter[0];
+            }
+
             try
             {
                 FileInfo file = new FileInfo(filePath);
@@ -25,89 +30,98 @@ namespace CSVTranslationLookup.CSV
                 }
 
                 Dictionary<string, CSVItem> items = new Dictionary<string, CSVItem>();
-
-                using (StreamReader reader = new StreamReader(filePath))
+                using (FileStream fs = new FileStream(filePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
                 {
-                    int currentColumn = 0;
-                    int currentLine = 0;
-                    StringBuilder sb = new StringBuilder();
-
-                    bool waitingForQuote = false;
-                    int c;
-                    string key = string.Empty;
-                    string value = string.Empty;
-
-                    while ((c = reader.Read()) != -1)
+                    using (StreamReader reader = new StreamReader(fs))
                     {
-                        char character = (char)c;
+                        int currentColumn = 0;
+                        int currentLine = 0;
+                        StringBuilder sb = new StringBuilder();
 
-                        if (!waitingForQuote)
+                        bool waitingForQuote = false;
+                        int c;
+                        string key = string.Empty;
+                        string value = string.Empty;
+
+                        while ((c = reader.Read()) != -1)
                         {
-                            if (character == '"')
-                            {
-                                waitingForQuote = true;
-                                continue;
-                            }
+                            char character = (char)c;
 
-                            if (character == ',')
+                            if (!waitingForQuote)
                             {
-                                if (reader.Peek() != -1)
+                                if (character == '"')
                                 {
-                                    if (currentColumn == 0)
+                                    waitingForQuote = true;
+                                    continue;
+                                }
+
+                                if (character == delimiter)
+                                {
+                                    if (reader.Peek() != -1)
                                     {
-                                        key = SanatizeString(sb.ToString());
-                                        sb.Clear();
-                                        currentColumn++;
+                                        if (currentColumn == 0)
+                                        {
+                                            key = SanatizeString(sb.ToString());
+                                            sb.Clear();
+                                            currentColumn++;
+                                        }
+                                        else if (currentColumn == 1)
+                                        {
+                                            value = SanatizeString(sb.ToString());
+                                            if (!string.IsNullOrEmpty(key) && !string.IsNullOrEmpty(value))
+                                            {
+                                                CSVItem item = new CSVItem(key, value, currentLine, filePath);
+                                                items.Add(key, item);
+                                            }
+                                            currentColumn = 0;
+                                            currentLine++;
+                                            sb.Clear();
+                                        }
                                     }
-                                    else if (currentColumn == 1)
+                                    continue;
+                                }
+
+                                if (character == '\n')
+                                {
+                                    if (reader.Peek() != -1)
                                     {
-                                        value = SanatizeString(sb.ToString());
-                                        CSVItem item = new CSVItem(key, value, currentLine, filePath);
-                                        items.Add(key, item);
                                         currentColumn = 0;
-                                        currentLine++;
+                                        value = SanatizeString(sb.ToString());
                                         sb.Clear();
+                                        if (!string.IsNullOrEmpty(key) && !string.IsNullOrEmpty(value))
+                                        {
+                                            CSVItem item = new CSVItem(key, value, currentLine, filePath);
+                                            items.Add(key, item);
+                                        }
+                                        currentLine++;
+
                                     }
                                 }
-                                continue;
+                            }
+                            else
+                            {
+                                if (character == '"')
+                                {
+                                    if (reader.Peek() == '"')
+                                    {
+                                        sb.Append('"');
+                                        _ = reader.Read(); //   Discard the next "
+                                        continue;
+                                    }
+                                    else
+                                    {
+                                        waitingForQuote = false;
+                                        continue;
+                                    }
+                                }
                             }
 
-                            if (character == '\n')
-                            {
-                                if (reader.Peek() != -1)
-                                {
-                                    currentColumn = 0;
-                                    value = SanatizeString(sb.ToString());
-                                    sb.Clear();
-                                    CSVItem item = new CSVItem(key, value, currentLine, filePath);
-                                    items.Add(key, item);
-                                    currentLine++;
-                                }
-                            }
+                            sb.Append(character);
                         }
-                        else
-                        {
-                            if (character == '"')
-                            {
-                                if (reader.Peek() == '"')
-                                {
-                                    sb.Append('"');
-                                    _ = reader.Read(); //   Discard the next "
-                                    continue;
-                                }
-                                else
-                                {
-                                    waitingForQuote = false;
-                                    continue;
-                                }
-                            }
-                        }
-
-                        sb.Append(character);
                     }
                 }
 
-                OnCSVProcessed(items);
+                OnCSVProcessed(filePath, items);
 
             }
             catch (Exception ex) { Logger.Log(ex); }
@@ -118,11 +132,11 @@ namespace CSVTranslationLookup.CSV
             return value.TrimEnd(new char[] { '\n', '\r' }).Trim();
         }
 
-        private void OnCSVProcessed(Dictionary<string, CSVItem> items)
+        private void OnCSVProcessed(string filePath, Dictionary<string, CSVItem> items)
         {
             if (CSVProcessed is not null)
             {
-                CSVProcessed(this, new CSVProcessedEventArgs(items));
+                CSVProcessed(this, new CSVProcessedEventArgs(filePath, items));
             }
         }
     }

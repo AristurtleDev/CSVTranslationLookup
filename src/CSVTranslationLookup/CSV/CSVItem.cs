@@ -24,7 +24,7 @@ namespace CSVTranslationLookup.CSV
         /// <summary>
         /// Gets the fully-qualified absolute path to the CSV file this iatem is located in.
         /// </summary>
-        public string FilePath { get; }
+        public string FilePath { get; set; }
 
         public CSVItem(string key, string value, int lineNumber, string filePath)
         {
