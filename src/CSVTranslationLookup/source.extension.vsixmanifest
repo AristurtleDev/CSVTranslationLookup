@@ -4,7 +4,7 @@
         <Identity Id="CSVTranslationLookup.fa071463-3e37-49ad-a204-456ecde95eb1" Version="0.2" Language="en-US" Publisher="Christopher Whitley" />
         <DisplayName>CSVTranslationLookup</DisplayName>
         <Description xml:space="preserve">A specialized Visual Studio extension for linking keyword tokens with keys from multiple CSV files, allow users to hover over matching keyword tokens in code files to get relavant information about that key in its CSV file and offer a quick way to open that CSV file to edit.</Description>
-        <License>Resources\LICENSE</License>
+        <License>Resources\LICENSE.txt</License>
         <Icon>Resources\Icon.png</Icon>
         <PreviewImage>Resources\Icon.png</PreviewImage>
     </Metadata>
