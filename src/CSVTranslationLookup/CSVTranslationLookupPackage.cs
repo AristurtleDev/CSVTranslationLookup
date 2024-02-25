@@ -10,11 +10,13 @@ using EnvDTE;
 using EnvDTE80;
 using Microsoft.VisualStudio;
 using Microsoft.VisualStudio.Shell;
+using Microsoft.VisualStudio.Shell.Events;
+using Microsoft.VisualStudio.Shell.Interop;
 
 namespace CSVTranslationLookup
 {
     [PackageRegistration(UseManagedResourcesOnly = true, AllowsBackgroundLoading = true)]
-    [ProvideAutoLoad(VSConstants.UICONTEXT.SolutionOpening_string, PackageAutoLoadFlags.BackgroundLoad)]
+    [ProvideAutoLoad(VSConstants.UICONTEXT.NoSolution_string, PackageAutoLoadFlags.BackgroundLoad)]
     [InstalledProductRegistration(Vsix.Name, Vsix.Description, Vsix.Version)]
     [ProvideMenuResource("Menus.ctmenu", 1)]
     [Guid(PackageGuids.CSVTranslationLookupString)]
@@ -28,14 +30,30 @@ namespace CSVTranslationLookup
 
         protected override async Task InitializeAsync(CancellationToken cancellationToken, IProgress<ServiceProgressData> progress)
         {
+            bool isSolutionLoaded = await IsSolutionLoadedAsync();
+            if(isSolutionLoaded)
+            {
+                await HandleOpenSolutionAsync();
+            }
+
+            Microsoft.VisualStudio.Shell.Events.SolutionEvents.OnAfterOpenSolution += (sender, args) => JoinableTaskFactory.RunAsync(() => HandleOpenSolutionAsync(sender, args));
+
             await JoinableTaskFactory.SwitchToMainThreadAsync(cancellationToken);
-
             s_dispatcher = Dispatcher.CurrentDispatcher;
-
             Package = this;
+            Logger.Initialize(this, Vsix.Name);   
+        }
 
-            Logger.Initialize(this, Vsix.Name);
+        private async Task<bool> IsSolutionLoadedAsync()
+        {
+            await JoinableTaskFactory.SwitchToMainThreadAsync();
+            IVsSolution solutionService = await GetServiceAsync(typeof(SVsSolution)) as IVsSolution;
+            ErrorHandler.ThrowOnFailure(solutionService.GetProperty((int)__VSPROPID.VSPROPID_IsSolutionOpen, out object value));
+            return value is bool isSolutionOpen && isSolutionOpen;
+        }
 
+        private async Task HandleOpenSolutionAsync(object sender = null, OpenSolutionEventArgs e = null)
+        {
             //  Search for an existing configuration file in any projects within the solution.
             //  If one is found, process it to begin with.
             if (SolutionHelpers.TryGetExistingConfigFile(out string configFile))

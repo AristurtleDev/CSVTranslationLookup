@@ -27,6 +27,11 @@ namespace CSVTranslationLookup.Configuration
 
                 string json = File.ReadAllText(configFile);
                 Config config = JsonConvert.DeserializeObject<Config>(json);
+                if(config is null)
+                {
+                    //  Default if unable to deseralize due to something like an empty file
+                    config = new Config();
+                }
                 config.FileName = configFile;
                 OnConfigProcessed(config);
             }
