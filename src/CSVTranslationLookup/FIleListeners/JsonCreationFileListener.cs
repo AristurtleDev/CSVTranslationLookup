@@ -3,13 +3,8 @@
 // See LICENSE file in the project root for full license information.
 
 using System;
-using System.Collections.Generic;
 using System.ComponentModel.Composition;
 using System.IO;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
-using CSVTranslationLookup.Configuration;
 using Microsoft.VisualStudio.Editor;
 using Microsoft.VisualStudio.Text;
 using Microsoft.VisualStudio.Text.Editor;
@@ -35,11 +30,11 @@ namespace CSVTranslationLookup.FIleListeners
         {
             IWpfTextView textView = EditorAdaptersFactoryService.GetWpfTextView(textViewAdapter);
 
-            if(TextDocumentFactoryService.TryGetTextDocument(textView.TextDataModel.DocumentBuffer, out _document))
+            if (TextDocumentFactoryService.TryGetTextDocument(textView.TextDataModel.DocumentBuffer, out _document))
             {
                 string filename = Path.GetFileName(_document.FilePath);
 
-                if(filename.Equals(Constants.CONFIGURATION_FILENAME, StringComparison.OrdinalIgnoreCase))
+                if (filename.Equals(Constants.CONFIGURATION_FILENAME, StringComparison.OrdinalIgnoreCase))
                 {
                     _document.FileActionOccurred += DocumentSaved;
                 }
@@ -52,12 +47,12 @@ namespace CSVTranslationLookup.FIleListeners
         {
             IWpfTextView view = (IWpfTextView)sender;
 
-            if(view is not null)
+            if (view is not null)
             {
                 view.Closed -= TextviewClosed;
             }
 
-            if(_document is not null)
+            if (_document is not null)
             {
                 _document.FileActionOccurred -= DocumentSaved;
             }
@@ -65,7 +60,7 @@ namespace CSVTranslationLookup.FIleListeners
 
         private void DocumentSaved(object sender, TextDocumentFileActionEventArgs e)
         {
-            if(e.FileActionType == FileActionTypes.ContentSavedToDisk)
+            if (e.FileActionType == FileActionTypes.ContentSavedToDisk)
             {
                 CSVTranslationLookupService.ProcessConfig(e.FilePath);
             }

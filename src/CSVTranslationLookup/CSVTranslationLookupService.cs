@@ -11,7 +11,6 @@ using System.Windows.Forms;
 using CSVTranslationLookup.Configuration;
 using CSVTranslationLookup.CSV;
 using EnvDTE80;
-using Microsoft.VisualStudio.Shell.Interop;
 
 namespace CSVTranslationLookup
 {
@@ -42,7 +41,7 @@ namespace CSVTranslationLookup
         {
             get
             {
-                if(_csvProcessor is null)
+                if (_csvProcessor is null)
                 {
                     _csvProcessor = new CSVProcessor();
                     _csvProcessor.CSVProcessed += CSVProcessed;
@@ -55,12 +54,12 @@ namespace CSVTranslationLookup
         public static Dictionary<string, CSVItem> Items { get; } = new Dictionary<string, CSVItem>();
 
         public static Config Config => s_config;
-        
+
 
 
         private static void CSVProcessed(object sender, CSVProcessedEventArgs e)
         {
-            foreach(var kvp in e.Items)
+            foreach (var kvp in e.Items)
             {
                 if (Items.ContainsKey(kvp.Key))
                 {
@@ -84,7 +83,7 @@ namespace CSVTranslationLookup
             //  If we have already loaded a configuration file previously either during the initialization of this
             //  extension or after one was created in a project, and this new configuraiton file is not the same
             //  file as the one we're already using, then we ignore.  Only use one configuration file.
-            if(Config is not null && Config.FileName.Equals(Path.GetFileName(configFile), StringComparison.InvariantCultureIgnoreCase))
+            if (Config is not null && Config.FileName.Equals(Path.GetFileName(configFile), StringComparison.InvariantCultureIgnoreCase))
             {
                 return;
             }
@@ -155,7 +154,7 @@ namespace CSVTranslationLookup
                                               .Select(kvp => kvp.Key)
                                               .ToList();
 
-            foreach(string key in keysToRemove)
+            foreach (string key in keysToRemove)
             {
                 Items.Remove(key);
             }
@@ -197,13 +196,13 @@ namespace CSVTranslationLookup
 
         private static void CSVRenamed(object sender, RenamedEventArgs e)
         {
-            if(e.ChangeType != WatcherChangeTypes.Renamed)
+            if (e.ChangeType != WatcherChangeTypes.Renamed)
             {
                 return;
             }
 
             FileInfo file = new FileInfo(e.FullPath);
-            if(!file.Exists)
+            if (!file.Exists)
             {
                 return;
             }

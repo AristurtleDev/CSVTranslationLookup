@@ -37,7 +37,7 @@ namespace CSVTranslationLookup
 
             //  Search for an existing configuration file in any projects within the solution.
             //  If one is found, process it to begin with.
-            if(SolutionHelpers.TryGetExistingConfigFile(out string configFile))
+            if (SolutionHelpers.TryGetExistingConfigFile(out string configFile))
             {
                 CSVTranslationLookupService.ProcessConfig(configFile);
             }

@@ -3,12 +3,7 @@
 // See LICENSE file in the project root for full license information.
 
 using System;
-using System.Collections.Generic;
 using System.IO;
-using System.Linq;
-using System.Security.Permissions;
-using System.Text;
-using System.Threading.Tasks;
 using Newtonsoft.Json;
 
 namespace CSVTranslationLookup.Configuration
@@ -40,7 +35,7 @@ namespace CSVTranslationLookup.Configuration
 
         private void OnConfigProcessed(Config config)
         {
-            if(ConfigProcessed is not null)
+            if (ConfigProcessed is not null)
             {
                 ConfigProcessed(this, new ConfigProcessedEventArgs(config));
             }

@@ -3,8 +3,6 @@
 // See LICENSE file in the project root for full license information.
 
 using System;
-using System.ComponentModel.Composition;
-using EnvDTE80;
 using Microsoft.VisualStudio.Shell.Interop;
 
 namespace CSVTranslationLookup
@@ -53,7 +51,7 @@ namespace CSVTranslationLookup
 
         public static void LogProgress(bool inProgress, string label = "", int completed = 0, int total = 0)
         {
-            if(CSVTranslationLookupPackage.DTE is null)
+            if (CSVTranslationLookupPackage.DTE is null)
             {
                 return;
             }
