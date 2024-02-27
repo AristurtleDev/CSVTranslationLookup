@@ -7,7 +7,7 @@ using CSVTranslationLookup.Common.Text;
 
 namespace CSVTranslationLookup.Common.IO
 {
-    internal static class StringReaderExtensions
+    public static class StringReaderExtensions
     {
         /// <summary>
         /// Reads from the <see cref="StringReader"/> up until the specified character.
