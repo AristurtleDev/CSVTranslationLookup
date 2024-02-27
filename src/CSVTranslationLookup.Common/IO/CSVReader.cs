@@ -2,12 +2,7 @@
 // Licensed under the MIT license.
 // See LICENSE file in the project root for full license information.
 
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Reflection.Metadata.Ecma335;
 using System.Text;
-using System.Threading.Tasks;
 using CSVTranslationLookup.Common.Text;
 using CSVTranslationLookup.Common.Tokens;
 
@@ -48,15 +43,15 @@ namespace CSVTranslationLookup.Common.IO
                         }
                         else
                         {
-                            if(character == '\n')
+                            if (character == '\n')
                             {
                                 buffer.AppendLine();
                                 continue;
                             }
 
-                            if(character == quote)
+                            if (character == quote)
                             {
-                                if(reader.Peek() == quote)
+                                if (reader.Peek() == quote)
                                 {
                                     buffer.Append(quote);
                                     _ = reader.Read();  //  Discard the next quote
