@@ -12,6 +12,6 @@ namespace CSVTranslationLookup.Service
 {
     public interface ICSVTranslationLookupService
     {
-        public bool TryGetItem(string key, )
+     
     }
 }
