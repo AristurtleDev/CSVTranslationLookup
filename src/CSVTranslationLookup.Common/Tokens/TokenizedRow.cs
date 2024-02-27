@@ -23,6 +23,18 @@ namespace CSVTranslationLookup.Common.Tokens
         public bool Equals(TokenizedRow? other) => other is not null && Index == other.Index && Tokens.SequenceEqual(other.Tokens);
 
         /// <inheritdoc />
-        public override int GetHashCode() => HashCode.Combine(Index, Tokens);
+        public override int GetHashCode()
+        {
+            unchecked
+            {
+                int hash = 27;
+                hash = (13 * hash) + index.GetHashCode();
+                for (int i = 0; i < Tokens.Length; i++)
+                {
+                    hash = (13 * hash) + (tokens[i]?.GetHashCode() ?? 0);
+                }
+                return hash;
+            }
+        }
     }
 }
