@@ -59,7 +59,7 @@ namespace CSVTranslationLookup.Common.Text
         /// Recycles the given <see cref="StringBuilder"/> instance if possible
         /// </summary>
         /// <param name="builder">The <see cref="StringBuilder"/> instance to recycle.</param>
-        public static void Recycle(StringBuilder builder)
+        public static void Recycle(this StringBuilder builder)
         {
             if (builder is null) return;
 
