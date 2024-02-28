@@ -11,8 +11,17 @@ using CSVTranslationLookup.Common.Tokens;
 
 namespace CSVTranslationLookup.Service
 {
-    public interface ICSVTranslationLookupService
+    public class CSVTranslationLookupService : ICSVTranslationLookupService
     {
-        ParallelQuery<TokenizedRow> FindToken(string key);
+
+        public CSVTranslationLookupService()
+        {
+
+        }
+
+        public ParallelQuery<TokenizedRow> FindToken(string key)
+        {
+            
+        }
     }
 }

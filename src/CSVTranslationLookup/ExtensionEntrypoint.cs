@@ -4,6 +4,7 @@
 
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.VisualStudio.Extensibility;
+using Microsoft.VisualStudio.ProjectSystem.Query;
 
 namespace CSVTranslationLookup
 {
@@ -22,12 +23,26 @@ namespace CSVTranslationLookup
                     publisherName: "Publisher name",
                     displayName: "CSVTranslationLookup",
                     description: "Extension description"),
+            LoadedWhen = ActivationConstraint.SolutionState(SolutionState.FullyLoaded)
         };
 
+        protected override async Task OnInitializedAsync(VisualStudioExtensibility extensibility, CancellationToken cancellationToken)
+        {
+            WorkspacesExtensibility workspace = extensibility.Workspaces();
+            var result = await workspace.QuerySolutionAsync((solution) =>
+            {
+                return solution.Get(x => x.SolutionFolders)
+                               .With(folder => folder.Name)
+                               .With(folder => folder.VisualPath);
+            }, CancellationToken.None);
+            await base.OnInitializedAsync(extensibility, cancellationToken);
+        }
+
         /// <inheritdoc />
-        protected override void InitializeServices(IServiceCollection serviceCollection)
+        protected override async void InitializeServices(IServiceCollection serviceCollection)
         {
             base.InitializeServices(serviceCollection);
+            
 
             // You can configure dependency injection here by adding services to the serviceCollection.
         }
