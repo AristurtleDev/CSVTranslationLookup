@@ -74,7 +74,7 @@ namespace CSVTranslationLookup.Common.IO
                              .WithDegreeOfParallelism(Environment.ProcessorCount)
                              .Where(row => !string.IsNullOrEmpty(row));
 
-            return query.Select((line, index) => new TokenizedRow(index, Tokenizer.Tokenize(line, delimiter, quote)));
+            return query.Select((line, index) => new TokenizedRow(filename, index, Tokenizer.Tokenize(line, delimiter, quote)));
 
         }
     }

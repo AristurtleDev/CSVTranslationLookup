@@ -24,7 +24,7 @@ namespace CSVTranslationLookup.Tests.Common.IO
         [Fact]
         public void FromFile()
         {
-            TokenizedRow row0 = new TokenizedRow(0, new Token[]
+            TokenizedRow row0 = new TokenizedRow(string.Empty, 0, new Token[]
             {
                 new Token(TokenType.Token, "id"),
                 new Token(TokenType.Token, "birthday"),
@@ -39,7 +39,7 @@ namespace CSVTranslationLookup.Tests.Common.IO
                 new Token(TokenType.EndOfRecord, "description")
             });
 
-            TokenizedRow row1 = new TokenizedRow(1, new Token[]
+            TokenizedRow row1 = new TokenizedRow(string.Empty, 1, new Token[]
             {
             new Token(TokenType.Token, "1"),
                 new Token(TokenType.Token, "1990-05-15"),
