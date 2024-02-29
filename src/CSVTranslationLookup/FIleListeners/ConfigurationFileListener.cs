@@ -17,7 +17,7 @@ namespace CSVTranslationLookup.FIleListeners
     [Export(typeof(IVsTextViewCreationListener))]
     [ContentType("json")]
     [TextViewRole(PredefinedTextViewRoles.Document)]
-    internal class JsonCreationFileListener : IVsTextViewCreationListener
+    internal class ConfigurationFileListener : IVsTextViewCreationListener
     {
         [Import]
         public IVsEditorAdaptersFactoryService EditorAdaptersFactoryService { get; set; }
