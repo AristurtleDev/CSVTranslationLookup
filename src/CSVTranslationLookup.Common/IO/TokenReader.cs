@@ -26,7 +26,7 @@ namespace CSVTranslationLookup.Common.IO
         /// <param name="input">The input string to read tokens from.</param>
         /// <param name="delimiter">The character that represents a delimiter.</param>
         /// <param name="quote">The character that represents the start of a quoted token.</param>
-        public TokenReader(string input, char delimiter, char quote)
+        public TokenReader(string input, char delimiter = ',', char quote = '"')
         {
             _reader = new StringReader(input);
             _delimiter = delimiter;
