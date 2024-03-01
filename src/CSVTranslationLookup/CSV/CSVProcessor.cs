@@ -16,11 +16,8 @@ namespace CSVTranslationLookup.CSV
 
         public void Process(string filePath)
         {
-            char delimiter = ',';
-            if (!string.IsNullOrEmpty(CSVTranslationLookupService.Config.Delimiter))
-            {
-                delimiter = CSVTranslationLookupService.Config.Delimiter[0];
-            }
+            char delimiter = CSVTranslationLookupService.Config.Delimiter;
+            char quote = CSVTranslationLookupService.Config.Quote;
 
             try
             {
@@ -50,7 +47,7 @@ namespace CSVTranslationLookup.CSV
 
                             if (!waitingForQuote)
                             {
-                                if (character == '"')
+                                if (character == quote)
                                 {
                                     waitingForQuote = true;
                                     continue;
@@ -101,12 +98,12 @@ namespace CSVTranslationLookup.CSV
                             }
                             else
                             {
-                                if (character == '"')
+                                if (character == quote)
                                 {
-                                    if (reader.Peek() == '"')
+                                    if (reader.Peek() == quote)
                                     {
                                         sb.Append('"');
-                                        _ = reader.Read(); //   Discard the next "
+                                        _ = reader.Read(); //   Discard the next quote
                                         continue;
                                     }
                                     else

@@ -8,8 +8,13 @@ using Newtonsoft.Json;
 
 namespace CSVTranslationLookup.Configuration
 {
-    internal class Config
+    public class Config
     {
+        /// <summary>
+        /// The name of the configuration file.
+        /// </summary>
+        public const string ConfigurationFilename = "csvconfig.json";
+
         /// <summary>
         /// Gets or sets the fully-qualified path to the configuration file
         /// </summary>
@@ -52,11 +57,18 @@ namespace CSVTranslationLookup.Configuration
         public List<string> FallbackSuffixes { get; set; }
 
         /// <summary>
-        /// Gets or Sets the delimiter used in the CSV files.  If one isn't specified, the default comma <c>,</c>
-        /// will be used.
+        /// Gets or SEts teh character that represents the delimiter used int he CSV Files.
+        /// The default is <c>,</c>.
         /// </summary>
         [JsonProperty("delimiter")]
-        public string Delimiter { get; set; }
+        public char Delimiter { get; set; }
+
+        /// <summary>
+        /// Gets or Sets the character that represents the start and end of a quoted block in the CSV files.
+        /// The default is <c>"</c>.
+        /// </summary>
+        [JsonProperty("quote")]
+        public char Quote { get; set; }
 
         /// <summary>
         /// Gets the fully-qualified absolute path to the watch directory.
@@ -71,6 +83,38 @@ namespace CSVTranslationLookup.Configuration
             }
 
             return new DirectoryInfo(path);
+        }
+
+        /// <summary>
+        /// Creates a new instance of the <see cref="Config"/> class initialized from the vlaues in the specified file.
+        /// </summary>
+        /// <param name="fileName">The path to the configuration file.</param>
+        /// <returns>The instance of the <see cref="Config"/> class created by this method.</returns>
+        public static Config FromFile(string fileName)
+        {
+            if (!File.Exists(fileName))
+            {
+                return null;
+            }
+
+            string json = File.ReadAllText(fileName);
+            Config config = JsonConvert.DeserializeObject<Config>(json);
+            if (config == null)
+            {
+                config = new Config();
+            }
+            config.FileName = fileName;
+
+            if(config.Delimiter == default)
+            {
+                config.Delimiter = ',';
+            }
+
+            if(config.Quote == default)
+            {
+                config.Quote = '"';
+            }
+            return config;
         }
     }
 }

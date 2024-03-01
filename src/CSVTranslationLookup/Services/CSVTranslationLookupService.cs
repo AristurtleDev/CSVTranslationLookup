@@ -3,76 +3,43 @@
 // See LICENSE file in the project root for full license information.
 
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Runtime.InteropServices;
 using System.Threading;
 using System.Windows.Forms;
+using CSVTranslationLookup.Common.IO;
+using CSVTranslationLookup.Common.Tokens;
 using CSVTranslationLookup.Configuration;
 using CSVTranslationLookup.CSV;
 using EnvDTE80;
+using Microsoft.Internal.VisualStudio.PlatformUI;
+using Microsoft.VisualStudio.Shell.Interop;
+using Microsoft.VisualStudio.Threading;
 
 namespace CSVTranslationLookup.Services
 {
     internal static class CSVTranslationLookupService
     {
-        private static Config s_config;
-        private static DTE2 _dte;
+        private readonly static ConcurrentDictionary<string, Token> _tokens = new ConcurrentDictionary<string, Token>(Environment.ProcessorCount, 31);
+        private static readonly FileSystemWatcher _watcher;
+        private static DTE2 DTE => CSVTranslationLookupPackage.DTE;
 
-        private static ConfigFileProcessor _configProcessor;
-        private static CSVProcessor _csvProcessor;
-        private static FileSystemWatcher _csvWatcher;
-
-        private static ConfigFileProcessor ConfigProcessor
-        {
-            get
-            {
-                if (_configProcessor is null)
-                {
-                    _configProcessor = new ConfigFileProcessor();
-                    _configProcessor.ConfigProcessed += ConfigProcessed;
-                }
-
-                return _configProcessor;
-            }
-        }
-
-        private static CSVProcessor CSVProcessor
-        {
-            get
-            {
-                if (_csvProcessor is null)
-                {
-                    _csvProcessor = new CSVProcessor();
-                    _csvProcessor.CSVProcessed += CSVProcessed;
-                }
-
-                return _csvProcessor;
-            }
-        }
-
-        public static Dictionary<string, CSVItem> Items { get; } = new Dictionary<string, CSVItem>();
-        public static Config Config => s_config;
-
-        private static void CSVProcessed(object sender, CSVProcessedEventArgs e)
-        {
-            foreach (var kvp in e.Items)
-            {
-                if (Items.ContainsKey(kvp.Key))
-                {
-                    //  Will overwrite the item if the key is duplicated in multiple files.
-                    Items[kvp.Key] = kvp.Value;
-                }
-                else
-                {
-                    Items.Add(kvp.Key, kvp.Value);
-                }
-            }
-        }
+        public static Config Config { get; private set; }
 
         static CSVTranslationLookupService()
         {
-            _dte = CSVTranslationLookupPackage.DTE;
+            _watcher = new FileSystemWatcher();
+            _watcher.Path = Path.GetDirectoryName(DTE.Solution.FullName);
+            _watcher.Filter = "*.csv";
+            _watcher.NotifyFilter = NotifyFilters.CreationTime | NotifyFilters.LastWrite | NotifyFilters.FileName;
+            _watcher.Changed += CSVChanged;
+            _watcher.Created += CSVCreated;
+            _watcher.Deleted += CSVDeleted;
+            _watcher.Renamed += CSVRenamed;
+            _watcher.EnableRaisingEvents = false;
         }
 
         public static void ProcessConfig(string configFile)
@@ -85,144 +52,146 @@ namespace CSVTranslationLookup.Services
                 return;
             }
 
-            ThreadPool.QueueUserWorkItem((o) =>
+            _watcher.EnableRaisingEvents = false;
+
+            try
             {
-                try
+
+                Config = Config.FromFile(configFile);
+                _tokens.Clear();
+
+                DirectoryInfo dir = Config.GetAbsoluteWatchDirectory();
+
+                ParallelQuery<ParallelQuery<TokenizedRow>> query = dir.GetFiles("*.csv")
+                                                                      .AsParallel()
+                                                                      .WithDegreeOfParallelism(Environment.ProcessorCount)
+                                                                      .Select(x => CSVFileProcessor.ProcessFile(x.FullName, Config.Delimiter, Config.Quote));
+
+                foreach (ParallelQuery<TokenizedRow> rowQuery in query)
                 {
-                    ConfigProcessor.Process(configFile);
+                    AddTokens(rowQuery);
                 }
-                catch (Exception ex) when (ex is FileNotFoundException || ex is DirectoryNotFoundException)
-                {
-                    string message = $"{Vsix.Name} cound not find configuration file at '{configFile}'.";
-                    Logger.Log(message);
-                    CSVTranslationLookupPackage.StatusText(message);
-                    _dte.StatusBar.Progress(false);
-                }
-                catch (Exception ex)
-                {
-                    Logger.Log(ex);
-                    ShowError(configFile);
-                    _dte.StatusBar.Progress(false);
-                    CSVTranslationLookupPackage.StatusText($"{Vsix.Name} couldn't process configuration successfully");
-                }
-                finally
-                {
-                    _dte.StatusBar.Progress(false);
-                }
-            });
+
+                _watcher.Path = dir.FullName;
+                _watcher.EnableRaisingEvents = true;
+            }
+            catch (Exception ex) when (ex is FileNotFoundException || ex is DirectoryNotFoundException)
+            {
+                string message = $"{Vsix.Name} could not find the configuration file at {configFile}";
+                Logger.Log(message);
+                CSVTranslationLookupPackage.StatusText(message);
+                DTE.StatusBar.Progress(false);
+                return;
+            }
+            catch (Exception ex)
+            {
+                Logger.Log(ex);
+                ShowError(configFile);
+                DTE.StatusBar.Progress(false);
+                return;
+            }
+            finally
+            {
+                DTE.StatusBar.Progress(false);
+            }
         }
 
-        private static void ConfigProcessed(object sender, ConfigProcessedEventArgs e)
-        {
-            //  Tell the CSV Proessor to process the CSV files at this point.
-            CSVTranslationLookupPackage.StatusText("Config file processed");
-            s_config = e.Config;
+        public static bool TryGetToken(string key, out Token token) => _tokens.TryGetValue(key, out token);
 
-            DirectoryInfo dir = e.Config.GetAbsoluteWatchDirectory();
-            if (_csvWatcher is null)
-            {
-                _csvWatcher = new FileSystemWatcher(dir.FullName, "*.csv");
-                _csvWatcher.NotifyFilter = NotifyFilters.CreationTime | NotifyFilters.LastWrite | NotifyFilters.FileName;
-                _csvWatcher.Changed += CSVChanged;
-                _csvWatcher.Created += CSVCreated;
-                _csvWatcher.Deleted += CSVDeleted;
-                _csvWatcher.Renamed += CSVRenamed;
-                _csvWatcher.EnableRaisingEvents = true;
-            }
-            FileInfo[] csvFiles = dir.GetFiles("*.csv", SearchOption.AllDirectories);
-            for (int i = 0; i < csvFiles.Length; i++)
-            {
-                Logger.LogProgress(true, $"Processing CSV Files {i + 1}/{csvFiles.Length}", i, csvFiles.Length);
-                CSVProcessor.Process(csvFiles[i].FullName);
-            }
-            Logger.LogProgress(false);
-        }
 
+        /// <summary>
+        /// Triggered when a watched CSV file is deleted.  All token keywords associated with that file are rmeoved
+        /// from the items collection.
+        /// </summary>
         private static void CSVDeleted(object sender, FileSystemEventArgs e)
         {
-            if (e.ChangeType != WatcherChangeTypes.Deleted)
-            {
-                return;
-            }
-
-            Logger.Log($"'{e.FullPath}' was deleted, removing all entries associted with that file");
-
-            IList<string> keysToRemove = Items.Where(kvp => kvp.Value.FilePath == e.FullPath)
-                                              .Select(kvp => kvp.Key)
-                                              .ToList();
-
-            foreach (string key in keysToRemove)
-            {
-                Items.Remove(key);
-            }
+            Logger.Log($"{e.FullPath} was deleted, removing all entries associated with that file");
+            RemoveTokensByFileName(e.FullPath);
         }
 
+        /// <summary>
+        /// Triggered when a csv file in the watched directory is changed.  All token keywords associated with that
+        /// file are first removed and then the new tokens added back.
+        /// </summary>
         private static void CSVChanged(object sender, FileSystemEventArgs e)
         {
-            if (e.ChangeType != WatcherChangeTypes.Changed)
+            if (!File.Exists(e.FullPath) || Path.GetExtension(e.FullPath) != ".csv")
             {
                 return;
             }
-
-            FileInfo file = new FileInfo(e.FullPath);
-            if (!file.Exists)
-            {
-                return;
-            }
-
-            CSVProcessor.Process(e.FullPath);
-            Logger.Log($"'{e.FullPath}' was updated, updating entries");
+            Logger.Log($"'{e.FullPath}' was changed, updating entries");
+            RemoveTokensByFileName(e.FullPath);
+            ParallelQuery<TokenizedRow> rows = CSVFileProcessor.ProcessFile(e.FullPath, Config.Delimiter, Config.Quote);
+            AddTokens(rows);
         }
 
+        /// <summary>
+        /// Triggered when a csv file in the watched directory is created.  All token keywords in the CSV file are
+        /// added to the internal token collection.
+        /// </summary>
         private static void CSVCreated(object sender, FileSystemEventArgs e)
         {
-            if (e.ChangeType != WatcherChangeTypes.Created)
+            if (!File.Exists(e.FullPath) || Path.GetExtension(e.FullPath) != ".csv")
             {
                 return;
             }
-
-            FileInfo file = new FileInfo(e.FullPath);
-            if (!file.Exists)
-            {
-                return;
-            }
-
-            CSVProcessor.Process(e.FullPath);
             Logger.Log($"'{e.FullPath}' was created, updating entries");
+            ParallelQuery<TokenizedRow> rows = CSVFileProcessor.ProcessFile(e.FullPath, Config.Delimiter, Config.Quote);
+            AddTokens(rows);
         }
 
+        /// <summary>
+        /// Triggered when a csv file in the watched directory is renamed.  All token keywors from the old filepath
+        /// are removed and tokens from the new filepath are added.
+        /// </summary>
         private static void CSVRenamed(object sender, RenamedEventArgs e)
         {
-            if (e.ChangeType != WatcherChangeTypes.Renamed)
+            if (!File.Exists(e.FullPath) || Path.GetExtension(e.FullPath) != ".csv")
             {
                 return;
             }
-
-            FileInfo file = new FileInfo(e.FullPath);
-            if (!file.Exists)
-            {
-                return;
-            }
-
             Logger.Log($"'{e.OldFullPath}' was renamed, updating filepath for all entities associted with that file");
-
-            IList<string> keysToChange = Items.Where(kvp => kvp.Value.FilePath == e.OldFullPath)
-                                              .Select(kvp => kvp.Key)
-                                              .ToList();
-
-            foreach (string key in keysToChange)
-            {
-                Items[key].FilePath = e.FullPath;
-            }
-
-
-
+            RemoveTokensByFileName(e.OldFullPath);
+            ParallelQuery<TokenizedRow> rows = CSVFileProcessor.ProcessFile(e.FullPath, Config.Delimiter, Config.Quote);
+            AddTokens(rows);
         }
+
+
+        private static void AddTokens(ParallelQuery<TokenizedRow> rows)
+        {
+            foreach (TokenizedRow row in rows)
+            {
+                //  Row must have at minimum 2 tokens, a key and value
+                if (row.Tokens.Length < 2)
+                {
+                    continue;
+                }
+
+                Token key = row.Tokens[0];
+                Token value = row.Tokens[1];
+
+                _tokens.AddOrUpdate(key.Content, value, (k, v) => value);
+            }
+        }
+
+        private static void RemoveTokensByFileName(string fileName)
+        {
+            ParallelQuery<string> query = _tokens.AsParallel()
+                                                 .WithDegreeOfParallelism(Environment.ProcessorCount)
+                                                 .Where(kvp => kvp.Value.FileName == fileName)
+                                                 .Select(kvp => kvp.Key);
+
+            foreach (string key in query)
+            {
+                _tokens.TryRemove(key, out _);
+            }
+        }
+
         private static void ShowError(string configFile)
         {
             MessageBox.Show
             (
-                $"There is an error in the {Constants.CONFIGURATION_FILENAME} file.",
+                $"There is an error in the {Config.ConfigurationFilename} file.",
                 Vsix.Name,
                 MessageBoxButtons.OK,
                 MessageBoxIcon.Information,

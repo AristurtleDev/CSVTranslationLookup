@@ -2,6 +2,7 @@
 // Licensed under the MIT license.
 // See LICENSE file in the project root for full license information.
 
+using CSVTranslationLookup.Configuration;
 using EnvDTE;
 using EnvDTE80;
 
@@ -11,7 +12,7 @@ namespace CSVTranslationLookup.Helpers
     {
         public static bool TryGetExistingConfigFile(out string configFile)
         {
-            Logger.Log($"Searching for '{Constants.CONFIGURATION_FILENAME}' configuration file in solution");
+            Logger.Log($"Searching for '{Config.ConfigurationFilename}' configuration file in solution");
 
             configFile = null;
 
@@ -32,7 +33,7 @@ namespace CSVTranslationLookup.Helpers
                 }
             }
 
-            Logger.Log($"Unable to locate {Constants.CONFIGURATION_FILENAME} in solution.  Please create one manually");
+            Logger.Log($"Unable to locate {Config.ConfigurationFilename} in solution.  Please create one manually");
             return false;
         }
 
@@ -40,7 +41,7 @@ namespace CSVTranslationLookup.Helpers
         {
             foreach (ProjectItem item in solutionFolder.ProjectItems)
             {
-                if (item.Name.Equals(Constants.CONFIGURATION_FILENAME))
+                if (item.Name.Equals(Config.ConfigurationFilename))
                 {
                     return item.FileNames[1];
                 }
