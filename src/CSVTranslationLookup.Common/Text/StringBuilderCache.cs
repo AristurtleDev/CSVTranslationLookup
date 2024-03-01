@@ -16,8 +16,8 @@ namespace CSVTranslationLookup.Common.Text
         private const int DefaultCapacity = 0x10;
 
         [ThreadStatic]
-        private static StringBuilder? _perThread;   //  ONe cached instance per thread
-        private static StringBuilder? _shared;      //  One cached instance shared between threads
+        private static StringBuilder _perThread;   //  ONe cached instance per thread
+        private static StringBuilder _shared;      //  One cached instance shared between threads
 
         /// <summary>
         /// Obtains a <see cref="StringBuilder"/> instance, which could be a recycled instance or a new one.
@@ -26,7 +26,7 @@ namespace CSVTranslationLookup.Common.Text
         /// <returns>The <see cref="StringBuilder"/> instance.</returns>
         public static StringBuilder Get(int capacity = DefaultCapacity)
         {
-            StringBuilder? temp = _perThread;
+            StringBuilder temp = _perThread;
             if (temp != null)
             {
                 _perThread = null;

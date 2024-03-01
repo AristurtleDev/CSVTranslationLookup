@@ -26,7 +26,7 @@ namespace CSVTranslationLookup
         private static DTE2 s_dte;
         public static DTE2 DTE => s_dte ?? (s_dte = GetGlobalService(typeof(DTE)) as DTE2);
         public static Dispatcher Dispatcher => s_dispatcher ?? (Dispatcher.CurrentDispatcher);
-        public static Package Package;
+        public static CSVTranslationLookupPackage Package;
 
         protected override async Task InitializeAsync(CancellationToken cancellationToken, IProgress<ServiceProgressData> progress)
         {
@@ -52,7 +52,7 @@ namespace CSVTranslationLookup
             return value is bool isSolutionOpen && isSolutionOpen;
         }
 
-        private async Task HandleOpenSolutionAsync(object sender = null, OpenSolutionEventArgs e = null)
+        private Task HandleOpenSolutionAsync(object sender = null, OpenSolutionEventArgs e = null)
         {
             //  Search for an existing configuration file in any projects within the solution.
             //  If one is found, process it to begin with.
@@ -60,6 +60,8 @@ namespace CSVTranslationLookup
             {
                 CSVTranslationLookupService.ProcessConfig(configFile);
             }
+
+            return Task.CompletedTask;
         }
 
         public static void StatusText(string message)

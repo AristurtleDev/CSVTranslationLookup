@@ -45,13 +45,12 @@
     <WarningLevel>4</WarningLevel>
   </PropertyGroup>
   <ItemGroup>
-    <Compile Include="Constants.cs" />
     <Compile Include="Controllers\KeywordInfoController.cs" />
     <Compile Include="Services\CSVTranslationLookupService.cs" />
     <Compile Include="CSV\CSVItem.cs" />
     <Compile Include="CSV\CSVProcessor.cs" />
     <Compile Include="CSV\CSVProcessedEventArgs.cs" />
-    <Compile Include="FIleListeners\ConfigurationFileListener.cs" />
+    <Compile Include="ConfigurationFileListener.cs" />
     <Compile Include="Helpers\SolutionHelpers.cs" />
     <Compile Include="Logger.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />

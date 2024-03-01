@@ -17,9 +17,9 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "SolutionItems", "SolutionIt
 		README.md = README.md
 	EndProjectSection
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CSVTranslationLookup.Tests", "tests\CSVTranslationLookup.Tests\CSVTranslationLookup.Tests.csproj", "{126A2890-890D-444A-8326-2EC243CEEB0E}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "CSVTranslationLookup.Tests", "tests\CSVTranslationLookup.Tests\CSVTranslationLookup.Tests.csproj", "{126A2890-890D-444A-8326-2EC243CEEB0E}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CSVTranslationLookup.Common", "src\CSVTranslationLookup.Common\CSVTranslationLookup.Common.csproj", "{47BA1745-D1C2-4BF4-9367-B623FB0422C9}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "CSVTranslationLookup.Common", "src\CSVTranslationLookup.Common\CSVTranslationLookup.Common.csproj", "{47BA1745-D1C2-4BF4-9367-B623FB0422C9}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution

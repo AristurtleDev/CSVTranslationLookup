@@ -53,7 +53,7 @@ namespace CSVTranslationLookup.Common.IO
 
                             if (character == '\n')
                             {
-                                lines.Add(buffer.ToString());
+                                lines.Add(buffer.ToString().Trim());
                                 buffer.Clear();
                             }
                         }
@@ -81,7 +81,7 @@ namespace CSVTranslationLookup.Common.IO
 
                         buffer.Append(character);
                     }
-                    buffer.Recycle();
+                    lines.Add(buffer.GetStringAndRecycle().Trim());
                 }
             }
 
@@ -90,7 +90,7 @@ namespace CSVTranslationLookup.Common.IO
                              .WithDegreeOfParallelism(Environment.ProcessorCount)
                              .Where(row => !string.IsNullOrEmpty(row));
 
-            return query.Select((line, index) => new TokenizedRow(filename, index, Tokenizer.Tokenize(line, delimiter, quote)));
+            return query.Select((line, index) => new TokenizedRow(filename, index, Tokenizer.Tokenize(line, filename, index + 1, delimiter, quote)));
         }
     }
 }

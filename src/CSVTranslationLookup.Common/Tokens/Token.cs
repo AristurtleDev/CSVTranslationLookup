@@ -3,6 +3,7 @@
 // See LICENSE file in the project root for full license information.
 
 using System;
+using System.Runtime.InteropServices;
 
 namespace CSVTranslationLookup.Common.Tokens
 {
@@ -19,14 +20,24 @@ namespace CSVTranslationLookup.Common.Tokens
         /// <summary>
         /// Gets the string contents of this token.
         /// </summary>
-        public string? Content { get; }
+        public string Content { get; }
+
+        /// <summary>
+        /// Gets the absolute path to the file this token is from.
+        /// </summary>
+        public string FileName { get; set; } = string.Empty;
+
+        /// <summary>
+        /// Gets the line number within the file this token is at.
+        /// </summary>
+        public int LineNumber { get; set; }
 
         /// <summary>
         /// Initializes a new instance of the <see cref="Token"/> class.
         /// </summary>
         /// <param name="tokenType">The type of token.</param>
         /// <param name="content">The string contents of the token.</param>
-        public Token(TokenType tokenType, string? content = null)
+        public Token(TokenType tokenType, string content = null)
         {
             TokenType = tokenType;
             Content = content;
@@ -49,7 +60,16 @@ namespace CSVTranslationLookup.Common.Tokens
         /// <inheritdoc />
         public override int GetHashCode()
         {
-            return HashCode.Combine(TokenType, Content);
+            unchecked
+            {
+                int prime = 13;
+                int hash = 27;
+                hash = (prime * hash) + TokenType.GetHashCode();
+                hash = (prime * hash) + Content.GetHashCode();
+                hash = prime * hash + FileName.GetHashCode();
+                hash = prime * hash + LineNumber.GetHashCode();
+                return hash;
+            }
         }
     }
 }

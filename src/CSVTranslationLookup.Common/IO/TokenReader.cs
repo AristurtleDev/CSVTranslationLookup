@@ -44,7 +44,7 @@ namespace CSVTranslationLookup.Common.IO
             ValidateDisposed(_isDisposed);
 
             SkipWhitespace();
-            string? result = null;
+            string result = null;
             int c = _reader.Peek();
 
             if (IsDelimiter(c))

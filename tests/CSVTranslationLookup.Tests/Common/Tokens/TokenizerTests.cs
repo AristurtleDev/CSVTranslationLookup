@@ -20,7 +20,7 @@ namespace CSVTranslationLookup.Tests.Common.Tokens
             };
 
             string line = "one,two,three";
-            Token[] actual = Tokenizer.Tokenize(line);
+            Token[] actual = Tokenizer.Tokenize(line, string.Empty, 0);
 
             Assert.Equal(expected, actual);
         }
@@ -36,7 +36,7 @@ namespace CSVTranslationLookup.Tests.Common.Tokens
             };
 
             string line = "one,\"two\",three";
-            Token[] actual = Tokenizer.Tokenize(line);
+            Token[] actual = Tokenizer.Tokenize(line, string.Empty, 0);
 
             Assert.Equal(expected, actual);
         }
@@ -57,7 +57,7 @@ namespace CSVTranslationLookup.Tests.Common.Tokens
 
             string line = builder.ToString();
 
-            Token[] actual = Tokenizer.Tokenize(line);
+            Token[] actual = Tokenizer.Tokenize(line, string.Empty, 0);
             Assert.Equal(expected, actual);
         }
     }

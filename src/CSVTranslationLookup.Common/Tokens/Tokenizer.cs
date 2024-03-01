@@ -17,32 +17,31 @@ namespace CSVTranslationLookup.Common.Tokens
         /// Tokenizes the given string based on CSV specification as defined in RFC4180
         /// </summary>
         /// <param name="input">The string to tokenize</param>
+        /// <param name="fileName">The file that the input string is from.</param>
+        /// <param name="lineNumber">The line number in the file that the input string is from.</param>
         /// <param name="delimiter">The character that represnets a delimiter</param>
         /// <param name="quote">The character that represents a quote.</param>
         /// <returns>An array containing the tokens generated</returns>
-        public static Token[] Tokenize(string input, char delimiter = ',', char quote = '"')
+        public static Token[] Tokenize(string input, string fileName, int lineNumber, char delimiter = ',', char quote = '"')
         {
             using (TokenReader reader = new TokenReader(input, delimiter, quote))
             {
-                return ReadTokens(reader).ToArray();
-            }
-        }
+                IList<Token> tokens = new List<Token>();
 
-        private static IList<Token> ReadTokens(TokenReader reader)
-        {
-            IList<Token> tokens = new List<Token>();
-
-            while (true)
-            {
-                Token token = reader.NextToken();
-                tokens.Add(token);
-                if (token.TokenType == TokenType.EndOfRecord)
+                while (true)
                 {
-                    break;
+                    Token token = reader.NextToken();
+                    token.FileName = fileName;
+                    token.LineNumber = lineNumber;
+                    tokens.Add(token);
+                    if (token.TokenType == TokenType.EndOfRecord)
+                    {
+                        break;
+                    }
                 }
-            }
 
-            return tokens;
+                return tokens.ToArray();
+            }
         }
     }
 }

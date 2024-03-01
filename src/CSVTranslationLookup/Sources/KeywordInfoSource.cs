@@ -6,6 +6,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
+using CSVTranslationLookup.Common.Tokens;
 using CSVTranslationLookup.CSV;
 using CSVTranslationLookup.Providers;
 using CSVTranslationLookup.Services;
@@ -52,7 +53,7 @@ namespace CSVTranslationLookup.Sources
                 //  Replace any surrounding quotations so this works with and without quoted keywords
                 string searchText = extent.Span.GetText().Replace("\"", "");
 
-                if (CSVTranslationLookupService.Items.TryGetValue(searchText, out CSVItem item))
+                if(CSVTranslationLookupService.TryGetToken(searchText, out Token token))
                 {
                     applicableToSpan = currentSnapshot.CreateTrackingSpan(extent.Span.Start, searchText.Length, SpanTrackingMode.EdgeInclusive);
 
@@ -60,14 +61,14 @@ namespace CSVTranslationLookup.Sources
                         new ContainerElement(
                             ContainerElementStyle.Wrapped,
                             new ImageElement(_keyIcon),
-                            ClassifiedTextElement.CreatePlainText(item.Key)
+                            ClassifiedTextElement.CreatePlainText(searchText)
                         );
 
                     var valueElement =
                           new ContainerElement(
                               ContainerElementStyle.Wrapped,
                               new ImageElement(_messageBubbleIcon),
-                              ClassifiedTextElement.CreatePlainText(item.Value)
+                              ClassifiedTextElement.CreatePlainText(token.Content)
                           );
 
 
@@ -75,25 +76,25 @@ namespace CSVTranslationLookup.Sources
                         new ContainerElement(
                             ContainerElementStyle.Wrapped,
                             new ImageElement(_tableIcon),
-                            ClassifiedTextElement.CreateHyperlink("Open Containing CSV", item.FilePath, () =>
+                            ClassifiedTextElement.CreateHyperlink("Open Containing CSV", token.FileName, () =>
                             {
                                 ProcessStartInfo startInfo = new ProcessStartInfo();
                                 if (!string.IsNullOrEmpty(CSVTranslationLookupService.Config.OpenWith))
                                 {
                                     startInfo.WorkingDirectory = Path.GetDirectoryName(CSVTranslationLookupService.Config.OpenWith);
                                     startInfo.FileName = CSVTranslationLookupService.Config.OpenWith;
-                                    startInfo.Arguments = item.FilePath;
+                                    startInfo.Arguments = token.FileName;
 
                                     string additionalArguments = CSVTranslationLookupService.Config.Arguments;
                                     if (!string.IsNullOrEmpty(additionalArguments))
                                     {
-                                        additionalArguments = additionalArguments.Replace("{linenum}", $"{item.LineNumber}");
+                                        additionalArguments = additionalArguments.Replace("{linenum}", $"{token.LineNumber}");
                                         startInfo.Arguments += $" {additionalArguments}";
                                     }
                                 }
                                 else
                                 {
-                                    startInfo.FileName = item.FilePath;
+                                    startInfo.FileName = token.FileName;
                                 }
 
                                 Process process = new Process();

@@ -5,6 +5,7 @@
 using System;
 using System.ComponentModel.Composition;
 using System.IO;
+using CSVTranslationLookup.Configuration;
 using CSVTranslationLookup.Services;
 using Microsoft.VisualStudio.Editor;
 using Microsoft.VisualStudio.Text;
@@ -35,7 +36,7 @@ namespace CSVTranslationLookup.FIleListeners
             {
                 string filename = Path.GetFileName(_document.FilePath);
 
-                if (filename.Equals(Constants.CONFIGURATION_FILENAME, StringComparison.OrdinalIgnoreCase))
+                if (filename.Equals(Config.ConfigurationFilename, StringComparison.OrdinalIgnoreCase))
                 {
                     _document.FileActionOccurred += DocumentSaved;
                 }

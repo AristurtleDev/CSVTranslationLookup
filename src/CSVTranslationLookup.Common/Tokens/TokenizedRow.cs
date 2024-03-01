@@ -25,7 +25,7 @@ namespace CSVTranslationLookup.Common.Tokens
         /// <summary>
         /// Gets all tokens in this row.
         /// </summary>
-        public Token?[] Tokens { get; }
+        public Token[] Tokens { get; }
 
         /// <summary>
         /// Initializes a new instance of the <see cref="TokenizedRow"/> class.
@@ -33,7 +33,7 @@ namespace CSVTranslationLookup.Common.Tokens
         /// <param name="fileName">The absolute path to the file this tokenized row is from.</param>
         /// <param name="index">The zero-based index of the row in the file this row is at.</param>
         /// <param name="tokens">The tokens that are in this row</param>
-        public TokenizedRow(string fileName, int index, Token?[] tokens)
+        public TokenizedRow(string fileName, int index, Token[] tokens)
         {
             FileName = fileName;
             Index = index;
@@ -41,13 +41,13 @@ namespace CSVTranslationLookup.Common.Tokens
         }
 
         /// <inheritdoc />
-        public override bool Equals(object? obj)
+        public override bool Equals(object obj)
         {
             return obj is TokenizedRow other && Equals(other);
         }
 
         /// <inheritdoc />
-        public bool Equals(TokenizedRow? other)
+        public bool Equals(TokenizedRow other)
         {
             return other != null &&
                    Index == other.Index &&
@@ -63,9 +63,12 @@ namespace CSVTranslationLookup.Common.Tokens
                 int hash = 27;
                 hash = (13 * hash) + FileName.GetHashCode();
                 hash = (13 * hash) + Index.GetHashCode();
-                for (int i = 0; i < Tokens.Length; i++)
+                if (Tokens != null)
                 {
-                    hash = (13 * hash) + (Tokens[i]?.GetHashCode() ?? 0);
+                    for (int i = 0; i < Tokens.Length; i++)
+                    {
+                        hash = (13 * hash) + (Tokens[i].GetHashCode());
+                    }
                 }
                 return hash;
             }
