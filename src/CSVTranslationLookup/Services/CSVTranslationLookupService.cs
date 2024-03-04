@@ -201,6 +201,25 @@ namespace CSVTranslationLookup.Services
                 Token key = row.Tokens[0];
                 Token value = row.Tokens[1];
 
+                //  Ensure key
+                if(string.IsNullOrEmpty(key.Content))
+                {
+                    continue;
+                }
+
+                //  Skip if this is the 'key':'en' row
+                if(key.Content.Equals("key", StringComparison.InvariantCultureIgnoreCase))
+                {
+                    continue;
+                }
+
+                //  Skip if this is a key only row, this means it's a comment row
+                if(string.IsNullOrEmpty(value.Content))
+                {
+                    continue;
+                }
+                
+
                 if(Config.Diagnostic)
                 {
                     Logger.Log($"Adding Token: {key.Content}:{value.Content}");
