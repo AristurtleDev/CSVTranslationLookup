@@ -70,6 +70,9 @@ namespace CSVTranslationLookup.Configuration
         [JsonProperty("quote")]
         public char Quote { get; set; }
 
+        [JsonProperty("diagnostic")]
+        public bool Diagnostic { get; set; }
+
         /// <summary>
         /// Gets the fully-qualified absolute path to the watch directory.
         /// </summary>

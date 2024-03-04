@@ -8,9 +8,11 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
+using System.Text;
 using System.Threading;
 using System.Windows.Forms;
 using CSVTranslationLookup.Common.IO;
+using CSVTranslationLookup.Common.Text;
 using CSVTranslationLookup.Common.Tokens;
 using CSVTranslationLookup.Configuration;
 using CSVTranslationLookup.CSV;
@@ -59,6 +61,26 @@ namespace CSVTranslationLookup.Services
             try
             {
                 Config = Config.FromFile(configFile);
+                if (Config.Diagnostic)
+                {
+                    StringBuilder builder = StringBuilderCache.Get();
+                    builder.AppendLine("Configuration file loaded with the following values");
+                    builder.Append(nameof(Config.WatchPath)).Append(": ").AppendLine(Config.WatchPath);
+                    builder.Append(nameof(Config.OpenWith)).Append(": ").AppendLine(Config.OpenWith);
+                    builder.Append(nameof(Config.Arguments)).Append(": ").AppendLine(Config.Arguments);
+                    if (Config.FallbackSuffixes.Count > 0)
+                    {
+                        builder.Append(nameof(Config.FallbackSuffixes)).Append(": [").Append(string.Join(", ", Config.FallbackSuffixes)).AppendLine("]");
+                    }
+                    else
+                    {
+                        builder.Append(nameof(Config.FallbackSuffixes)).Append(": [ ]").AppendLine();
+                    }
+                    builder.Append(nameof(Config.Delimiter)).Append(": ").AppendLine(Config.Delimiter.ToString());
+                    builder.Append(nameof(Config.Quote)).Append(": ").AppendLine(Config.Quote.ToString());
+                    builder.Append(nameof(Config.Diagnostic)).Append(": ").AppendLine(Config.Diagnostic.ToString());
+                    Logger.Log(builder.GetStringAndRecycle());
+                }
             }
             catch (Exception ex)
             {
@@ -82,7 +104,13 @@ namespace CSVTranslationLookup.Services
                 ParallelQuery<ParallelQuery<TokenizedRow>> query = dir.GetFiles("*.csv")
                                                                         .AsParallel()
                                                                         .WithDegreeOfParallelism(Environment.ProcessorCount)
-                                                                        .Select(x => CSVFileProcessor.ProcessFile(x.FullName, Config.Delimiter, Config.Quote));
+                                                                        .Select(x => {
+                                                                            if (Config.Diagnostic)
+                                                                            {
+                                                                                Logger.Log("Processing: " + x.FullName);
+                                                                            }
+                                                                            return CSVFileProcessor.ProcessFile(x.FullName, Config.Delimiter, Config.Quote);
+                                                                            });
                 foreach (ParallelQuery<TokenizedRow> rowQuery in query)
                 {
                     AddTokens(rowQuery);
@@ -172,6 +200,11 @@ namespace CSVTranslationLookup.Services
 
                 Token key = row.Tokens[0];
                 Token value = row.Tokens[1];
+
+                if(Config.Diagnostic)
+                {
+                    Logger.Log($"Adding Token: {key.Content}:{value.Content}");
+                }
 
                 _tokens.AddOrUpdate(key.Content, value, (k, v) => value);
             }
