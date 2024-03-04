@@ -54,19 +54,35 @@ namespace CSVTranslationLookup.Services
 
             _watcher.EnableRaisingEvents = false;
 
+            //  Attempt to load the the configuration from file. This shoudl only ever throw an exception if the JSON
+            //  the configuration file is malformed.  
             try
             {
-
                 Config = Config.FromFile(configFile);
-                _tokens.Clear();
+            }
+            catch (Exception ex)
+            {
+                string message = "There was an error loading the configuration file.  See CSVTranslationLookup in Output Panel for details.";
+                ShowError(message);
+                CSVTranslationLookupPackage.StatusText(message);
+                Logger.Log(ex);
+                return;
+            }
+            finally
+            {
+                DTE.StatusBar.Progress(false);
+            }
 
+            //  Try to process the CSV Files to get the keyword tokens. Exception are logged in the CSVTranslationOutput panel.
+            try
+            {
+                _tokens.Clear();
                 DirectoryInfo dir = Config.GetAbsoluteWatchDirectory();
 
                 ParallelQuery<ParallelQuery<TokenizedRow>> query = dir.GetFiles("*.csv")
-                                                                      .AsParallel()
-                                                                      .WithDegreeOfParallelism(Environment.ProcessorCount)
-                                                                      .Select(x => CSVFileProcessor.ProcessFile(x.FullName, Config.Delimiter, Config.Quote));
-
+                                                                        .AsParallel()
+                                                                        .WithDegreeOfParallelism(Environment.ProcessorCount)
+                                                                        .Select(x => CSVFileProcessor.ProcessFile(x.FullName, Config.Delimiter, Config.Quote));
                 foreach (ParallelQuery<TokenizedRow> rowQuery in query)
                 {
                     AddTokens(rowQuery);
@@ -75,24 +91,11 @@ namespace CSVTranslationLookup.Services
                 _watcher.Path = dir.FullName;
                 _watcher.EnableRaisingEvents = true;
             }
-            catch (Exception ex) when (ex is FileNotFoundException || ex is DirectoryNotFoundException)
-            {
-                string message = $"{Vsix.Name} could not find the configuration file at {configFile}";
-                Logger.Log(message);
-                CSVTranslationLookupPackage.StatusText(message);
-                DTE.StatusBar.Progress(false);
-                return;
-            }
             catch (Exception ex)
             {
                 Logger.Log(ex);
-                ShowError(configFile);
                 DTE.StatusBar.Progress(false);
                 return;
-            }
-            finally
-            {
-                DTE.StatusBar.Progress(false);
             }
         }
 
@@ -187,11 +190,11 @@ namespace CSVTranslationLookup.Services
             }
         }
 
-        private static void ShowError(string configFile)
+        private static void ShowError(string message)
         {
             MessageBox.Show
             (
-                $"There is an error in the {Config.ConfigurationFilename} file.",
+                message,
                 Vsix.Name,
                 MessageBoxButtons.OK,
                 MessageBoxIcon.Information,
