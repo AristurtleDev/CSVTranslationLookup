@@ -38,7 +38,8 @@ Once you have created this file, you can copy and paste the following as the def
     "openWith": "",
     "arguments": "",
     "fallBackSuffixes": [],
-    "delimiter": ","
+    "delimiter": ",",
+    "quote", "\""
 }
 ```
 
@@ -49,6 +50,7 @@ Once you have created this file, you can copy and paste the following as the def
 | arguments        | `string`        | optional | Any arguments to pass to the executable defined in the `openWith` property.  If you include `{linenumber}` in the argument string, then this will be replaced with the actual line number of the item in the CSV. **Arguments are only used if a value is given for the `openWith` property** |
 | fallBackSuffixes | `Array[string]` | optional | An array of strings that will be used a fallbacks if the token keyword being hovered over is not found.   For instance, if you add the fallback suffix `_M` and you have the token `ABILITY_NAME_M` as the key in a CSV file, but in th text editor is the token keyword `ABILITY_NAME`, since it will not find the `ABILITY_NAME` key, it will then do an additional search by appending all suffixes defined here, in order of the suffixes, until it finds a match or exhausts all suffixes. |
 | delimiter        | `string`        | optional | The single character delimiter used to delineate values in the CSV files being read.  **IF this property is not defined, or if it is an empty string, then the default value will be a comma `,`.** |
+| quote            | `char`          | optional | THe character that represents the start and end of a quoted block within the CSV file. **If this property is not defined, or if it is an empty char, then the default value will be double quote `"`** | `"`
 
 Once the file is saved for the first time, the extension will automatically begin parsing the CSV files based on the configurations.
 
