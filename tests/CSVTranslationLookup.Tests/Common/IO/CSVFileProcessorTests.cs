@@ -4,6 +4,7 @@
 
 using CSVTranslationLookup.Common.IO;
 using CSVTranslationLookup.Common.Tokens;
+using Xunit;
 
 namespace CSVTranslationLookup.Tests.Common.IO
 {
@@ -78,6 +79,36 @@ namespace CSVTranslationLookup.Tests.Common.IO
             string path = GetPath("issue-not-tokenizing-last-line.csv");
             ParallelQuery<TokenizedRow> actual = CSVFileProcessor.ProcessFile(path);
             Assert.Equal(expected.Count, actual.Count());
+        }
+
+        //  This was a specific issue that was occurring when a column with a quoted string contains a comma inside
+        //  the string.  The comma was incorrectly causing a token break
+        [Fact]
+        public void Tokenizes_Quotes_String_With_Comma()
+        {
+            string fileName = "issue-comma-in-quoted-string.csv";
+
+            TokenizedRow row0 = new TokenizedRow(fileName, 0, new Token[]
+            {
+                new Token(TokenType.Token, "PASSIVE_TOWERDEFENSE_NAME"),
+                new Token(TokenType.EndOfRecord, "Tower Defense")
+            });
+
+            TokenizedRow row1 = new TokenizedRow(fileName, 0, new Token[]
+            {
+                new Token(TokenType.Token, "PASSIVE_TOWERDEFENSE_DESC"),
+                new Token(TokenType.EndOfRecord, "Whenever an enemy unit comes within range, you shoot them for 1 damage.")
+            });
+
+            List<TokenizedRow> expected = new List<TokenizedRow>() { row0, row1 };
+
+            TokenizedRow[] actual = CSVFileProcessor.ProcessFile(GetPath(fileName)).ToArray();
+            Assert.Equal(expected.Count, actual.Count());
+            Assert.Equal(expected[0].Tokens[0].Content, actual[0].Tokens[0].Content);
+            Assert.Equal(expected[0].Tokens[1].Content, actual[0].Tokens[1].Content);
+            Assert.Equal(expected[1].Tokens[0].Content, actual[1].Tokens[0].Content);
+            Assert.Equal(expected[1].Tokens[1].Content, actual[1].Tokens[1].Content);
+            
         }
     }
 }
