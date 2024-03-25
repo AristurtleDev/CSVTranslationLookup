@@ -48,6 +48,7 @@ namespace CSVTranslationLookup.Common.IO
                             if (character == quote)
                             {
                                 waitingForQuote = true;
+                                buffer.Append(character);
                                 continue;
                             }
 
@@ -67,13 +68,7 @@ namespace CSVTranslationLookup.Common.IO
 
                             if (character == quote)
                             {
-                                if (reader.Peek() == quote)
-                                {
-                                    buffer.Append(quote);
-                                    _ = reader.Read();  //  Discard the next quote
-                                    continue;
-                                }
-
+                                buffer.Append(quote);
                                 waitingForQuote = false;
                                 continue;
                             }
