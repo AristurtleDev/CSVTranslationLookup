@@ -7,18 +7,35 @@ using System.Collections.Concurrent;
 using System.IO;
 using System.Linq;
 using System.Text;
+using System.Threading;
+using System.Threading.Tasks;
 using System.Windows.Forms;
 using CSVTranslationLookup.Common.IO;
 using CSVTranslationLookup.Common.Text;
 using CSVTranslationLookup.Common.Tokens;
 using CSVTranslationLookup.Configuration;
 using EnvDTE80;
+using Microsoft.VisualStudio.VCProjectEngine;
 
 namespace CSVTranslationLookup.Services
 {
     public sealed class CSVTranslationLookupService : IDisposable
     {
+        // Wait time before processing a file change.
+        private const int DebounceDelayMilliseconds = 500;
+
+        // Number of times to retry on file lock.
+        private const int MaxRetryAttempts = 3;
+
+        // Base delay between retries (gets multiplied by attempt number for exponential backoff).
+        private const int RetryDelayMilliseconds = 100;
+
+        // Ignore duplicate events within this window.
+        private const int DuplicateEventWindowMilliseconds = 50;
+
         private readonly ConcurrentDictionary<string, Token> _tokens = new ConcurrentDictionary<string, Token>(Environment.ProcessorCount, 31);
+        private readonly ConcurrentDictionary<string, CancellationTokenSource> _fileChangeDebounce = new ConcurrentDictionary<string, CancellationTokenSource>();
+        private readonly ConcurrentDictionary<string, DateTime> _lastEventTime = new ConcurrentDictionary<string, DateTime>();
         private FileSystemWatcher _watcher;
         private DTE2 DTE => CSVTranslationLookupPackage.DTE;
         private bool _isDisposed;
@@ -35,7 +52,7 @@ namespace CSVTranslationLookup.Services
             _watcher = new FileSystemWatcher
             {
                 Filter = "*.csv",
-                NotifyFilter = NotifyFilters.CreationTime | NotifyFilters.LastWrite | NotifyFilters.FileName,
+                NotifyFilter = NotifyFilters.LastWrite | NotifyFilters.FileName,
                 EnableRaisingEvents = false
             };
 
@@ -157,13 +174,131 @@ namespace CSVTranslationLookup.Services
             return _tokens.TryGetValue(key, out token);
         }
 
+        private async Task RetryFileOperationsAsync(Action operation, CancellationToken cancellationToken)
+        {
+            int attempt = 0;
+            while(attempt < MaxRetryAttempts)
+            {
+                try
+                {
+                    operation();
+                    return;
+                }
+                catch(IOException) when (attempt < MaxRetryAttempts - 1)
+                {
+                    // File might be locked, wait and retry
+                    attempt++;
+                    await Task.Delay(RetryDelayMilliseconds * attempt, cancellationToken);
+                }
+                catch(UnauthorizedAccessException) when (attempt < MaxRetryAttempts - 1)
+                {
+                    // File might be locked, wait and retry
+                    attempt++;
+                    await Task.Delay(RetryDelayMilliseconds * attempt, cancellationToken);
+                }
+            }
+        }
+
+        private async void ProcessFileChangeAsync(string filePath, string removeOldPath = null)
+        {
+            if(_isDisposed)
+            {
+                return;
+            }
+
+            // Cancel any existing operations fo rthis file
+            if(_fileChangeDebounce.TryGetValue(filePath, out var existingCts))
+            {
+                existingCts.Cancel();
+                existingCts.Dispose();
+            }
+
+            var cts = new CancellationTokenSource();
+            _fileChangeDebounce[filePath] = cts;
+
+            try
+            {
+                // Debounce, wait for file operations to settle
+                await Task.Delay(DebounceDelayMilliseconds, cts.Token);
+
+                // Perform the file processsing with retry logic
+                await RetryFileOperationsAsync(() =>
+                {
+                    if (!string.IsNullOrEmpty(removeOldPath))
+                    {
+                        RemoveTokensByFileName(removeOldPath);
+                    }
+
+                    RemoveTokensByFileName(filePath);
+
+                    if (File.Exists(filePath))
+                    {
+                        ParallelQuery<TokenizedRow> rows = CSVFileProcessor.ProcessFile(filePath, Config.Delimiter, Config.Quote);
+                        AddTokens(rows);
+                    }
+                }, cts.Token);
+
+                if(Config.Diagnostic)
+                {
+                    Logger.Log($"Successfully processed file change: {filePath}");
+                }
+            }
+            catch(OperationCanceledException)
+            {
+                // Operation was cancelled by a newer change, this is expected
+                if(Config.Diagnostic)
+                {
+                    Logger.Log($"File change processing cancelled for: {filePath}");
+                }
+            }
+            catch(Exception ex)
+            {
+                Logger.Log($"Error processing file change for {filePath}: {ex.Message}");
+                Logger.Log(ex);
+            }
+            finally
+            {
+                _fileChangeDebounce.TryRemove(filePath, out _);
+                cts.Dispose();
+            }
+        }
+
+        private bool IsDuplicateEvent(string filePath)
+        {
+            DateTime now = DateTime.UtcNow;
+
+            if(_lastEventTime.TryGetValue(filePath, out DateTime lastTime))
+            {
+                double timeSinceLastEvent = (now - lastTime).TotalMilliseconds;
+                if(timeSinceLastEvent < DuplicateEventWindowMilliseconds)
+                {
+                    // This is likely a duplicated event
+                    if(Config.Diagnostic)
+                    {
+                        Logger.Log($"Ignoring duplicate event for {filePath} (oly {timeSinceLastEvent:F0}ms since last event");
+                    }
+                    return true;
+                }
+            }
+
+            // Updat elast event time
+            _lastEventTime[filePath] = now;
+            return false;
+        }
+
         /// <summary>
-        /// Triggered when a watched CSV file is deleted.  All token keywords associated with that file are rmeoved
+        /// Triggered when a watched CSV file is deleted.  All token keywords associated with that file are removed
         /// from the items collection.
         /// </summary>
         private void CSVDeleted(object sender, FileSystemEventArgs e)
         {
             if(_isDisposed)
+            {
+                return;
+            }
+
+            // Filter out duplicate events (many editors trigger Changed multiple times)
+            if(IsDuplicateEvent(e.FullPath))
             {
                 return;
             }
@@ -183,11 +318,14 @@ namespace CSVTranslationLookup.Services
                 return;
             }
 
+            // Filter out duplicate events (many editors trigger Changed multiple times)
+            if (IsDuplicateEvent(e.FullPath))
+            {
+                return;
+            }
+
             Logger.Log($"'{e.FullPath}' was changed, updating entries...");
-            RemoveTokensByFileName(e.FullPath);
-            ParallelQuery<TokenizedRow> rows = CSVFileProcessor.ProcessFile(e.FullPath, Config.Delimiter, Config.Quote);
-            AddTokens(rows);
-            Logger.Log("Update finished");
+            ProcessFileChangeAsync(e.FullPath);
         }
 
         /// <summary>
@@ -202,9 +340,7 @@ namespace CSVTranslationLookup.Services
             }
 
             Logger.Log($"'{e.FullPath}' was created, updating entries...");
-            ParallelQuery<TokenizedRow> rows = CSVFileProcessor.ProcessFile(e.FullPath, Config.Delimiter, Config.Quote);
-            AddTokens(rows);
-            Logger.Log("Update finished");
+            ProcessFileChangeAsync(e.FullPath);
         }
 
         /// <summary>
@@ -219,10 +355,7 @@ namespace CSVTranslationLookup.Services
             }
 
             Logger.Log($"'{e.OldFullPath}' was renamed, updating filepath for all entities associated with that file");
-            RemoveTokensByFileName(e.OldFullPath);
-            ParallelQuery<TokenizedRow> rows = CSVFileProcessor.ProcessFile(e.FullPath, Config.Delimiter, Config.Quote);
-            AddTokens(rows);
-            Logger.Log("Update finished");
+            ProcessFileChangeAsync(e.FullPath, e.OldFullPath);
         }
 
         private void AddTokens(ParallelQuery<TokenizedRow> rows)
@@ -308,6 +441,14 @@ namespace CSVTranslationLookup.Services
                 _watcher.Dispose();
                 _watcher = null;
             }
+
+            foreach(var kvp in _fileChangeDebounce)
+            {
+                kvp.Value.Cancel();
+                kvp.Value.Dispose();
+            }
+            _fileChangeDebounce.Clear();
+            _lastEventTime.Clear();
 
             _tokens.Clear();
             _isDisposed = true;
