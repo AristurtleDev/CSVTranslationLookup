@@ -15,6 +15,9 @@ namespace CSVTranslationLookup.Common.Text
     {
         private const int DefaultCapacity = 0x10;
 
+        // 16KB, don't cache larger instances
+        private const int MaxCachedCapacity = 1024 * 16;
+
         [ThreadStatic]
         private static StringBuilder _perThread;   //  ONe cached instance per thread
         private static StringBuilder _shared;      //  One cached instance shared between threads
@@ -26,21 +29,47 @@ namespace CSVTranslationLookup.Common.Text
         /// <returns>The <see cref="StringBuilder"/> instance.</returns>
         public static StringBuilder Get(int capacity = DefaultCapacity)
         {
+            // For very large capacity requesets, always create new instances (don't pollute cache)
+            if(capacity > MaxCachedCapacity)
+            {
+                return new StringBuilder(capacity);
+            }
+
             StringBuilder temp = _perThread;
             if (temp != null)
             {
                 _perThread = null;
-                temp.Length = 0;
+
+                // Clear the builder (resets length but preserves Capacity)
+                temp.Clear();
+
+                // Ensure capacity meets request (may grow if needed)
+                if(temp.Capacity < capacity)
+                {
+                    temp.Capacity = capacity;
+                }
+
                 return temp;
             }
 
             temp = Interlocked.Exchange(ref _shared, null);
-            if (temp == null)
+
+            if(temp != null)
             {
-                return new StringBuilder(capacity);
+                // Clear the builder (resets length but preserves Capacity)
+                temp.Clear();
+
+                // Ensure capacity meets request (may grow if needed)
+                if (temp.Capacity < capacity)
+                {
+                    temp.Capacity = capacity;
+                }
+
+                return temp;
             }
-            temp.Length = 0;
-            return temp;
+
+            // No cached instances available, create a new one
+            return new StringBuilder(capacity);
         }
 
         /// <summary>
@@ -66,12 +95,23 @@ namespace CSVTranslationLookup.Common.Text
                 return;
             }
 
+            // Don't cache oversized builders, let GC handle them
+            if(builder.Capacity > MaxCachedCapacity)
+            {
+                return;
+            }
+
+            // Clear the builder before cachine
+            builder.Clear();
+
+            // Try to cache in thread-local slot first (fastest access)
             if (_perThread == null)
             {
                 _perThread = builder;
                 return;
             }
 
+            // Thread-local slot full, try shared slot
             Interlocked.CompareExchange(ref _shared, builder, null);
         }
     }
