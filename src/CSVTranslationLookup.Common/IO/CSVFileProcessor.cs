@@ -4,6 +4,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Data;
 using System.IO;
 using System.Linq;
 using System.Text;
@@ -28,62 +29,82 @@ namespace CSVTranslationLookup.Common.IO
         /// </returns>
         public static ParallelQuery<TokenizedRow> ProcessFile(string filename, char delimiter = ',', char quote = '"')
         {
-            List<string> lines = new List<string>();
+            List<string> rows = new List<string>();
 
             using (FileStream fs = new FileStream(filename, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
             {
                 using (StreamReader reader = new StreamReader(fs))
                 {
-                    StringBuilder buffer = StringBuilderCache.Get();
+                    StringBuilder currentRow = StringBuilderCache.Get();
+                    bool inQuotedField = false;
+                    string line;
 
-                    bool waitingForQuote = false;
-                    int c;
-
-                    while ((c = reader.Read()) != -1)
+                    while ((line = reader.ReadLine()) != null)
                     {
-                        char character = (char)c;
-
-                        if (!waitingForQuote)
+                        // process each character in the line to track quote state
+                        for (int i = 0; i < line.Length; i++)
                         {
-                            if (character == quote)
-                            {
-                                waitingForQuote = true;
-                                buffer.Append(character);
-                                continue;
-                            }
+                            char c = line[i];
 
-                            if (character == '\n')
+                            if (c == quote)
                             {
-                                lines.Add(buffer.ToString().Trim());
-                                buffer.Clear();
+                                // Check for escaped quote (two consecutive quotes)
+                                if (i + 1 < line.Length && line[i + 1] == quote)
+
+                                {
+                                    // Escaped quote, add both and skip next
+                                    currentRow.Append(quote);
+                                    currentRow.Append(quote);
+                                    i++;
+                                }
+                                else
+                                {
+                                    // Toggle quote state
+                                    inQuotedField = !inQuotedField;
+                                    currentRow.Append(c);
+                                }
                             }
+                            else
+                            {
+                                currentRow.Append(c);
+                            }
+                        }
+
+                        if (inQuotedField)
+                        {
+                            // inside a multi-line quoted field, preserve the newline and continue
+                            currentRow.AppendLine();
                         }
                         else
                         {
-                            if (character == '\n')
+                            // End of row, add to collection and reset
+                            string rowText = currentRow.ToString().Trim();
+                            if (!string.IsNullOrWhiteSpace(rowText))
                             {
-                                buffer.AppendLine();
-                                continue;
+                                rows.Add(rowText);
                             }
-
-                            if (character == quote)
-                            {
-                                buffer.Append(quote);
-                                waitingForQuote = false;
-                                continue;
-                            }
+                            currentRow.Clear();
                         }
-
-                        buffer.Append(character);
                     }
-                    lines.Add(buffer.GetStringAndRecycle().Trim());
+
+                    // Handle any remaining content (file witout trailing new line)
+                    if (currentRow.Length > 0)
+                    {
+                        string rowText = currentRow.ToString().Trim();
+                        if (!string.IsNullOrWhiteSpace(rowText))
+                        {
+                            rows.Add(rowText);
+                        }
+                    }
+
+                    currentRow.Recycle();
                 }
             }
 
-            var query = lines.AsParallel()
-                             .AsOrdered()
-                             .WithDegreeOfParallelism(Environment.ProcessorCount)
-                             .Where(row => !string.IsNullOrEmpty(row));
+            // Tokenize rows in parallel for performance
+            var query = rows.AsParallel()
+                            .AsOrdered()
+                            .WithDegreeOfParallelism(Environment.ProcessorCount);
 
             return query.Select((line, index) => new TokenizedRow(filename, index, Tokenizer.Tokenize(line, filename, index + 1, delimiter, quote)));
         }
