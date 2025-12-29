@@ -4,67 +4,77 @@
 
 using System;
 using System.Collections.Concurrent;
-using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using System.Runtime.InteropServices;
 using System.Text;
-using System.Threading;
 using System.Windows.Forms;
 using CSVTranslationLookup.Common.IO;
 using CSVTranslationLookup.Common.Text;
 using CSVTranslationLookup.Common.Tokens;
 using CSVTranslationLookup.Configuration;
-using CSVTranslationLookup.CSV;
 using EnvDTE80;
-using Microsoft.Internal.VisualStudio.PlatformUI;
-using Microsoft.VisualStudio.Shell.Interop;
-using Microsoft.VisualStudio.Threading;
 
 namespace CSVTranslationLookup.Services
 {
-    internal static class CSVTranslationLookupService
+    public sealed class CSVTranslationLookupService : IDisposable
     {
-        private readonly static ConcurrentDictionary<string, Token> _tokens = new ConcurrentDictionary<string, Token>(Environment.ProcessorCount, 31);
-        private static readonly FileSystemWatcher _watcher;
-        private static DTE2 DTE => CSVTranslationLookupPackage.DTE;
+        private readonly ConcurrentDictionary<string, Token> _tokens = new ConcurrentDictionary<string, Token>(Environment.ProcessorCount, 31);
+        private FileSystemWatcher _watcher;
+        private DTE2 DTE => CSVTranslationLookupPackage.DTE;
+        private bool _isDisposed;
 
         public static Config Config { get; private set; }
 
-        static CSVTranslationLookupService()
+        private void EnsureWatcher()
         {
-            _watcher = new FileSystemWatcher();
-            _watcher.Path = Path.GetDirectoryName(DTE.Solution.FullName);
-            _watcher.Filter = "*.csv";
-            _watcher.NotifyFilter = NotifyFilters.CreationTime | NotifyFilters.LastWrite | NotifyFilters.FileName;
+            if(_watcher != null)
+            {
+                return;
+            }
+
+            _watcher = new FileSystemWatcher
+            {
+                Filter = "*.csv",
+                NotifyFilter = NotifyFilters.CreationTime | NotifyFilters.LastWrite | NotifyFilters.FileName,
+                EnableRaisingEvents = false
+            };
+
             _watcher.Changed += CSVChanged;
             _watcher.Created += CSVCreated;
             _watcher.Deleted += CSVDeleted;
             _watcher.Renamed += CSVRenamed;
-            _watcher.EnableRaisingEvents = false;
         }
 
-        public static void ProcessConfig(string configFile)
+        /// <summary>Processes a configuration file and initializes the CSV translation lookup service.</summary>
+        /// <param name="configFile">The path to the configuration file to process.</param>
+        /// <exception cref="ObjectDisposedException">Throw if this CSVTranslationLookupServerice has been disposed of.</exception>
+        public void ProcessConfig(string configFile)
         {
-            //  If we have already loaded a configuration file previously either during the initialization of this
-            //  extension or after one was created in a project, and this new configuraiton file is not the same
-            //  file as the one we're already using, then we ignore.  Only use one configuration file.
+            if(_isDisposed)
+            {
+                throw new ObjectDisposedException(nameof(CSVTranslationLookupService));
+            }
+
+            // If we have already loaded a configuration file previously either during the initialization of this
+            // extension or after one was created in a project, and this new configuration fiel is not hte same
+            // file as the one we're already using, then we ignore.  Only use one configuration file.
             if (Config is not null && Config.FileName.Equals(Path.GetFileName(configFile), StringComparison.InvariantCultureIgnoreCase))
             {
                 return;
             }
 
+            EnsureWatcher();
             _watcher.EnableRaisingEvents = false;
 
-            //  Attempt to load the the configuration from file. This shoudl only ever throw an exception if the JSON
-            //  the configuration file is malformed.  
+            // Attempt to load the configuration from file.  This should only ever throw an exception if the JSON
+            // in the configuration file is malformed
             try
             {
                 Config = Config.FromFile(configFile);
-                if (Config.Diagnostic)
+                if(Config.Diagnostic)
                 {
                     StringBuilder builder = StringBuilderCache.Get();
-                    builder.AppendLine("Configuration file loaded with the following values");
+                    builder.AppendLine("Configuration file loaded with the following values:");
                     builder.Append(nameof(Config.WatchPath)).Append(": ").AppendLine(Config.WatchPath);
                     builder.Append(nameof(Config.OpenWith)).Append(": ").AppendLine(Config.OpenWith);
                     builder.Append(nameof(Config.Arguments)).Append(": ").AppendLine(Config.Arguments);
@@ -82,7 +92,7 @@ namespace CSVTranslationLookup.Services
                     Logger.Log(builder.GetStringAndRecycle());
                 }
             }
-            catch (Exception ex)
+            catch(Exception ex)
             {
                 string message = "There was an error loading the configuration file.  See CSVTranslationLookup in Output Panel for details.";
                 ShowError(message);
@@ -95,23 +105,26 @@ namespace CSVTranslationLookup.Services
                 DTE.StatusBar.Progress(false);
             }
 
-            //  Try to process the CSV Files to get the keyword tokens. Exception are logged in the CSVTranslationOutput panel.
+            // Try to process the CSV files to get the keyword tokens
+            // Exceptions are logged in the CSVTranslationOutput panel.
             try
             {
                 _tokens.Clear();
                 DirectoryInfo dir = Config.GetAbsoluteWatchDirectory();
 
                 ParallelQuery<ParallelQuery<TokenizedRow>> query = dir.GetFiles("*.csv")
-                                                                        .AsParallel()
-                                                                        .WithDegreeOfParallelism(Environment.ProcessorCount)
-                                                                        .Select(x => {
-                                                                            if (Config.Diagnostic)
-                                                                            {
-                                                                                Logger.Log("Processing: " + x.FullName);
-                                                                            }
-                                                                            return CSVFileProcessor.ProcessFile(x.FullName, Config.Delimiter, Config.Quote);
-                                                                            });
-                foreach (ParallelQuery<TokenizedRow> rowQuery in query)
+                                                                      .AsParallel()
+                                                                      .WithDegreeOfParallelism(Environment.ProcessorCount)
+                                                                      .Select(x =>
+                                                                      {
+                                                                          if (Config.Diagnostic)
+                                                                          {
+                                                                              Logger.Log("Processing: " + x.FullName);
+                                                                          }
+                                                                          return CSVFileProcessor.ProcessFile(x.FullName, Config.Delimiter, Config.Quote);
+                                                                      });
+
+                foreach(ParallelQuery<TokenizedRow> rowQuery in query)
                 {
                     AddTokens(rowQuery);
                 }
@@ -119,7 +132,7 @@ namespace CSVTranslationLookup.Services
                 _watcher.Path = dir.FullName;
                 _watcher.EnableRaisingEvents = true;
             }
-            catch (Exception ex)
+            catch(Exception ex)
             {
                 Logger.Log(ex);
                 DTE.StatusBar.Progress(false);
@@ -127,15 +140,34 @@ namespace CSVTranslationLookup.Services
             }
         }
 
-        public static bool TryGetToken(string key, out Token token) => _tokens.TryGetValue(key, out token);
+        /// <summary>Attempts to retrieve a token by its key.</summary>
+        /// <param name="key">The key to search for.</param>
+        /// <param name="token">
+        /// When this method returns, contains the token associated with the specified key, if found; otherwise, null.
+        /// </param>
+        /// <returns>true if the token was foundn; otherwise, false.</returns>
+        public bool TryGetToken(string key, out Token token)
+        {
+            if(_isDisposed)
+            {
+                token = null;
+                return false;
+            }
 
+            return _tokens.TryGetValue(key, out token);
+        }
 
         /// <summary>
         /// Triggered when a watched CSV file is deleted.  All token keywords associated with that file are rmeoved
         /// from the items collection.
         /// </summary>
-        private static void CSVDeleted(object sender, FileSystemEventArgs e)
+        private void CSVDeleted(object sender, FileSystemEventArgs e)
         {
+            if(_isDisposed)
+            {
+                return;
+            }
+
             Logger.Log($"{e.FullPath} was deleted, removing all entries associated with that file");
             RemoveTokensByFileName(e.FullPath);
         }
@@ -144,56 +176,61 @@ namespace CSVTranslationLookup.Services
         /// Triggered when a csv file in the watched directory is changed.  All token keywords associated with that
         /// file are first removed and then the new tokens added back.
         /// </summary>
-        private static void CSVChanged(object sender, FileSystemEventArgs e)
+        private void CSVChanged(object sender, FileSystemEventArgs e)
         {
-            if (!File.Exists(e.FullPath) || Path.GetExtension(e.FullPath) != ".csv")
+            if(_isDisposed || !File.Exists(e.FullPath) || Path.GetExtension(e.FullPath) != ".csv")
             {
                 return;
             }
-            Logger.Log($"'{e.FullPath}' was changed, updating entries");
+
+            Logger.Log($"'{e.FullPath}' was changed, updating entries...");
             RemoveTokensByFileName(e.FullPath);
             ParallelQuery<TokenizedRow> rows = CSVFileProcessor.ProcessFile(e.FullPath, Config.Delimiter, Config.Quote);
             AddTokens(rows);
+            Logger.Log("Update finished");
         }
 
         /// <summary>
         /// Triggered when a csv file in the watched directory is created.  All token keywords in the CSV file are
         /// added to the internal token collection.
         /// </summary>
-        private static void CSVCreated(object sender, FileSystemEventArgs e)
+        private void CSVCreated(object sender, FileSystemEventArgs e)
         {
-            if (!File.Exists(e.FullPath) || Path.GetExtension(e.FullPath) != ".csv")
+            if (_isDisposed || !File.Exists(e.FullPath) || Path.GetExtension(e.FullPath) != ".csv")
             {
                 return;
             }
-            Logger.Log($"'{e.FullPath}' was created, updating entries");
+
+            Logger.Log($"'{e.FullPath}' was created, updating entries...");
             ParallelQuery<TokenizedRow> rows = CSVFileProcessor.ProcessFile(e.FullPath, Config.Delimiter, Config.Quote);
             AddTokens(rows);
+            Logger.Log("Update finished");
         }
 
         /// <summary>
         /// Triggered when a csv file in the watched directory is renamed.  All token keywors from the old filepath
         /// are removed and tokens from the new filepath are added.
         /// </summary>
-        private static void CSVRenamed(object sender, RenamedEventArgs e)
+        private void CSVRenamed(object sender, RenamedEventArgs e)
         {
-            if (!File.Exists(e.FullPath) || Path.GetExtension(e.FullPath) != ".csv")
+            if (_isDisposed || !File.Exists(e.FullPath) || Path.GetExtension(e.FullPath) != ".csv")
             {
                 return;
             }
-            Logger.Log($"'{e.OldFullPath}' was renamed, updating filepath for all entities associted with that file");
+
+            Logger.Log($"'{e.OldFullPath}' was renamed, updating filepath for all entities associated with that file");
             RemoveTokensByFileName(e.OldFullPath);
             ParallelQuery<TokenizedRow> rows = CSVFileProcessor.ProcessFile(e.FullPath, Config.Delimiter, Config.Quote);
             AddTokens(rows);
+            Logger.Log("Update finished");
         }
 
-
-        private static void AddTokens(ParallelQuery<TokenizedRow> rows)
+        private void AddTokens(ParallelQuery<TokenizedRow> rows)
         {
-            foreach (TokenizedRow row in rows)
+            foreach(TokenizedRow row in rows)
             {
-                //  Row must have at minimum 2 tokens, a key and value
-                if (row.Tokens.Length < 2)
+                // Row must have at minimum 2 tokens, a key and value
+                if(row.Tokens.Length < 2)
                 {
                     continue;
                 }
@@ -201,24 +238,23 @@ namespace CSVTranslationLookup.Services
                 Token key = row.Tokens[0];
                 Token value = row.Tokens[1];
 
-                //  Ensure key
+                // Ensure key
                 if(string.IsNullOrEmpty(key.Content))
                 {
                     continue;
                 }
 
-                //  Skip if this is the 'key':'en' row
+                // Skip if this is the 'key':'en' row
                 if(key.Content.Equals("key", StringComparison.InvariantCultureIgnoreCase))
                 {
                     continue;
                 }
 
-                //  Skip if this is a key only row, this means it's a comment row
+                // Skip if this is a key only row, this means it's a comment row
                 if(string.IsNullOrEmpty(value.Content))
                 {
                     continue;
                 }
-                
 
                 if(Config.Diagnostic)
                 {
@@ -229,7 +265,7 @@ namespace CSVTranslationLookup.Services
             }
         }
 
-        private static void RemoveTokensByFileName(string fileName)
+        private void RemoveTokensByFileName(string fileName)
         {
             ParallelQuery<string> query = _tokens.AsParallel()
                                                  .WithDegreeOfParallelism(Environment.ProcessorCount)
@@ -253,6 +289,28 @@ namespace CSVTranslationLookup.Services
                 MessageBoxDefaultButton.Button1,
                 MessageBoxOptions.ServiceNotification
             );
+        }
+
+        public void Dispose()
+        {
+            if(_isDisposed)
+            {
+                return;
+            }
+
+            if(_watcher != null)
+            {
+                _watcher.EnableRaisingEvents = false;
+                _watcher.Changed -= CSVChanged;
+                _watcher.Created -= CSVCreated;
+                _watcher.Deleted -= CSVDeleted;
+                _watcher.Renamed -= CSVRenamed;
+                _watcher.Dispose();
+                _watcher = null;
+            }
+
+            _tokens.Clear();
+            _isDisposed = true;
         }
     }
 }

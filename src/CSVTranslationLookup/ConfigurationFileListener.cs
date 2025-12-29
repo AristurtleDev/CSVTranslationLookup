@@ -64,7 +64,7 @@ namespace CSVTranslationLookup.FIleListeners
         {
             if (e.FileActionType == FileActionTypes.ContentSavedToDisk)
             {
-                CSVTranslationLookupService.ProcessConfig(e.FilePath);
+                CSVTranslationLookupPackage.Package?.LookupService?.ProcessConfig(e.FilePath);
             }
         }
     }

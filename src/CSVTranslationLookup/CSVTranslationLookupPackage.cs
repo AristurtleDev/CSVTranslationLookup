@@ -24,12 +24,18 @@ namespace CSVTranslationLookup
     {
         private static Dispatcher s_dispatcher;
         private static DTE2 s_dte;
+        private CSVTranslationLookupService _lookupService;
+
         public static DTE2 DTE => s_dte ?? (s_dte = GetGlobalService(typeof(DTE)) as DTE2);
         public static Dispatcher Dispatcher => s_dispatcher ?? (Dispatcher.CurrentDispatcher);
         public static CSVTranslationLookupPackage Package;
 
+        public CSVTranslationLookupService LookupService => _lookupService;
+
         protected override async Task InitializeAsync(CancellationToken cancellationToken, IProgress<ServiceProgressData> progress)
         {
+            _lookupService = new CSVTranslationLookupService();
+
             bool isSolutionLoaded = await IsSolutionLoadedAsync();
             if(isSolutionLoaded)
             {
@@ -42,6 +48,17 @@ namespace CSVTranslationLookup
             s_dispatcher = Dispatcher.CurrentDispatcher;
             Package = this;
             Logger.Initialize(this, Vsix.Name);   
+        }
+
+        protected override void Dispose(bool disposing)
+        {
+            if(disposing)
+            {
+                _lookupService?.Dispose();
+                _lookupService = null;
+            }
+
+            base.Dispose(disposing);
         }
 
         private async Task<bool> IsSolutionLoadedAsync()
@@ -58,7 +75,7 @@ namespace CSVTranslationLookup
             //  If one is found, process it to begin with.
             if (SolutionHelpers.TryGetExistingConfigFile(out string configFile))
             {
-                CSVTranslationLookupService.ProcessConfig(configFile);
+                _lookupService?.ProcessConfig(configFile);
             }
 
             return Task.CompletedTask;

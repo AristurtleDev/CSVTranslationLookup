@@ -53,10 +53,11 @@ namespace CSVTranslationLookup.Sources
             //  Replace any surrouding quotations so this works with and without quoted keywords
             string searchText = extent.Span.GetText().Replace("\"", "");
 
-            if (!CSVTranslationLookupService.TryGetToken(searchText, out Token token))
+            CSVTranslationLookupService service = CSVTranslationLookupPackage.Package?.LookupService;
+            if(service == null || !service.TryGetToken(searchText, out Token token))
             {
                 return Task.FromResult<QuickInfoItem>(null);
-            }
+            }           
 
             ContainerElement keyElement =
                 new ContainerElement(
