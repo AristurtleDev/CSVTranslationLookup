@@ -515,6 +515,7 @@ namespace CSVTranslationLookup.Services
             foreach (string key in query)
             {
                 _tokens.TryRemove(key, out _);
+                _resolvedTokenCache.TryRemove(key, out _);
             }
         }
 
