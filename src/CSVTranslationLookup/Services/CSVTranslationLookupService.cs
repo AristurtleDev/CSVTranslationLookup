@@ -88,33 +88,77 @@ namespace CSVTranslationLookup.Services
             // in the configuration file is malformed
             try
             {
-                Config = Config.FromFile(configFile);
+                Config = Config.FromFile(configFile, out ConfigValidationResult validationResult);
+
+                // Check if the file was loaded successfully
+                if(Config == null)
+                {
+                    string errorMessage = "Failed to load configuration file.";
+                    if(validationResult != null && validationResult.Errors.Count > 0)
+                    {
+                        errorMessage = validationResult.GetFormattedMessage();
+                    }
+
+                    Logger.Log(errorMessage);
+                    ShowError("Configuration file could not be loaded.  See See CSVTranslationLookup in Output Panel for details.");
+                    CSVTranslationLookupPackage.StatusText("Configuration file error; check Output Panel");
+                    return;
+                }
+
+                // Check validation result
+                if(validationResult != null)
+                {
+                    if(!validationResult.IsValid)
+                    {
+                        // Configuration has errors, log and notify
+                        Logger.Log(validationResult.GetFormattedMessage());
+                        ShowError($"Configuration file has errors:\n\n{validationResult.GetFormattedMessage()}\n\nPlease fix these issues in {Path.GetFileName(configFile)}");
+                        CSVTranslationLookupPackage.StatusText("Configuration validation failed; check Output panel");
+                        return;
+                    }
+
+                    if(validationResult.Warnings.Count > 0)
+                    {
+                        // Configuration has warnings, log but continue
+                        Logger.Log($"Configuration loaded with warnings:\n{validationResult.GetFormattedMessage()}");
+                        CSVTranslationLookupPackage.StatusText($"Configuration loaded with {validationResult.Warnings.Count} warning(s)");
+                    }
+                    else
+                    {
+                        Logger.Log("Configuration loaded succsssfully with no issues");
+                    }
+                }
+
+
                 if(Config.Diagnostic)
                 {
                     StringBuilder builder = StringBuilderCache.Get();
                     builder.AppendLine("Configuration file loaded with the following values:");
-                    builder.Append(nameof(Config.WatchPath)).Append(": ").AppendLine(Config.WatchPath);
-                    builder.Append(nameof(Config.OpenWith)).Append(": ").AppendLine(Config.OpenWith);
-                    builder.Append(nameof(Config.Arguments)).Append(": ").AppendLine(Config.Arguments);
-                    if (Config.FallbackSuffixes.Count > 0)
+                    builder.Append("  ").Append(nameof(Config.WatchPath)).Append(": ").AppendLine(string.IsNullOrEmpty(Config.WatchPath) ? "(current directory)" : Config.WatchPath);
+                    builder.Append("  ").Append(nameof(Config.OpenWith)).Append(": ").AppendLine(string.IsNullOrEmpty(Config.OpenWith) ? "(default application)" : Config.OpenWith);
+                    builder.Append("  ").Append(nameof(Config.Arguments)).Append(": ").AppendLine(string.IsNullOrEmpty(Config.Arguments) ? "(none)" : Config.Arguments);
+
+                    if (Config.FallbackSuffixes != null && Config.FallbackSuffixes.Count > 0)
                     {
-                        builder.Append(nameof(Config.FallbackSuffixes)).Append(": [").Append(string.Join(", ", Config.FallbackSuffixes)).AppendLine("]");
+                        builder.Append("  ").Append(nameof(Config.FallbackSuffixes)).Append(": [").Append(string.Join(", ", Config.FallbackSuffixes)).AppendLine("]");
                     }
                     else
                     {
-                        builder.Append(nameof(Config.FallbackSuffixes)).Append(": [ ]").AppendLine();
+                        builder.Append("  ").Append(nameof(Config.FallbackSuffixes)).Append(": [ ]").AppendLine();
                     }
-                    builder.Append(nameof(Config.Delimiter)).Append(": ").AppendLine(Config.Delimiter.ToString());
-                    builder.Append(nameof(Config.Quote)).Append(": ").AppendLine(Config.Quote.ToString());
-                    builder.Append(nameof(Config.Diagnostic)).Append(": ").AppendLine(Config.Diagnostic.ToString());
+
+                    builder.Append("  ").Append(nameof(Config.Delimiter)).Append(": '").Append(Config.Delimiter).AppendLine("'");
+                    builder.Append("  ").Append(nameof(Config.Quote)).Append(": '").Append(Config.Quote).AppendLine("'");
+                    builder.Append("  ").Append(nameof(Config.Diagnostic)).Append(": ").AppendLine(Config.Diagnostic.ToString());
                     Logger.Log(builder.GetStringAndRecycle());
                 }
             }
             catch(Exception ex)
             {
-                string message = "There was an error loading the configuration file.  See CSVTranslationLookup in Output Panel for details.";
+                string message = "There was an unexpected error loading the configuration file. See CSVTranslationLookup in Output Panel for details.";
                 ShowError(message);
-                CSVTranslationLookupPackage.StatusText(message);
+                CSVTranslationLookupPackage.StatusText("Configuration error - check Output panel");
+                Logger.Log($"Unexpected error loading configuration from {configFile}:");
                 Logger.Log(ex);
                 return;
             }
