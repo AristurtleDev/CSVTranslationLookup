@@ -1,17 +1,23 @@
 using System;
 using System.Runtime.InteropServices;
+using System.Runtime.Remoting.Channels;
 using System.Threading;
 using System.Threading.Tasks;
-using System.Windows.Threading;
 using Community.VisualStudio.Toolkit;
 using CSVTranslationLookup.Helpers;
 using CSVTranslationLookup.Services;
 using EnvDTE;
 using EnvDTE80;
 using Microsoft.VisualStudio;
+using Microsoft.VisualStudio.Imaging;
+using Microsoft.VisualStudio.Imaging.Interop;
 using Microsoft.VisualStudio.Shell;
 using Microsoft.VisualStudio.Shell.Events;
 using Microsoft.VisualStudio.Shell.Interop;
+using Microsoft.VisualStudio.Threading;
+using static CSVTranslationLookup.Utilities.ErrorHandler;
+using ShellSolutionEvents = Microsoft.VisualStudio.Shell.Events.SolutionEvents;
+
 
 namespace CSVTranslationLookup
 {
@@ -22,18 +28,38 @@ namespace CSVTranslationLookup
     [Guid(PackageGuids.CSVTranslationLookupString)]
     public sealed class CSVTranslationLookupPackage : ToolkitPackage
     {
-        private static Dispatcher s_dispatcher;
         private static DTE2 s_dte;
+        private static IVsStatusbar s_vsStatusBar;
+
         private CSVTranslationLookupService _lookupService;
 
-        public static DTE2 DTE => s_dte ?? (s_dte = GetGlobalService(typeof(DTE)) as DTE2);
-        public static Dispatcher Dispatcher => s_dispatcher ?? (Dispatcher.CurrentDispatcher);
-        public static CSVTranslationLookupPackage Package;
+        public static CSVTranslationLookupPackage Package { get; private set; }
 
-        public CSVTranslationLookupService LookupService => _lookupService;
+        public static DTE2 DTE
+        {
+            get
+            {
+                if(s_dte == null)
+                {
+                    s_dte = GetGlobalService(typeof(DTE)) as DTE2;
+                }
+
+                return s_dte;
+            }
+        }
+
+        public CSVTranslationLookupService LookupService
+        {
+            get
+            {
+                return _lookupService;
+            }
+        }
 
         protected override async Task InitializeAsync(CancellationToken cancellationToken, IProgress<ServiceProgressData> progress)
         {
+            Package = this;
+
             _lookupService = new CSVTranslationLookupService();
 
             bool isSolutionLoaded = await IsSolutionLoadedAsync();
@@ -42,12 +68,8 @@ namespace CSVTranslationLookup
                 await HandleOpenSolutionAsync();
             }
 
-            Microsoft.VisualStudio.Shell.Events.SolutionEvents.OnAfterOpenSolution += (sender, args) => JoinableTaskFactory.RunAsync(() => HandleOpenSolutionAsync(sender, args));
-
-            await JoinableTaskFactory.SwitchToMainThreadAsync(cancellationToken);
-            s_dispatcher = Dispatcher.CurrentDispatcher;
-            Package = this;
-            Logger.Initialize(this, Vsix.Name);   
+            ShellSolutionEvents.OnAfterOpenSolution += (sender, args) => JoinableTaskFactory.RunAsync(() => HandleOpenSolutionAsync(sender, args));
+            Logger.Initialize(this, Vsix.Name);
         }
 
         protected override void Dispose(bool disposing)
@@ -69,24 +91,34 @@ namespace CSVTranslationLookup
             return value is bool isSolutionOpen && isSolutionOpen;
         }
 
-        private Task HandleOpenSolutionAsync(object sender = null, OpenSolutionEventArgs e = null)
+        private async Task HandleOpenSolutionAsync(object sender = null, OpenSolutionEventArgs e = null)
         {
             //  Search for an existing configuration file in any projects within the solution.
             //  If one is found, process it to begin with.
             if (SolutionHelpers.TryGetExistingConfigFile(out string configFile))
             {
-                _lookupService?.ProcessConfig(configFile);
+                await _lookupService?.ProcessConfigAsync(configFile);
             }
-
-            return Task.CompletedTask;
         }
 
-        public static void StatusText(string message)
+        public static async Task StatusTextAsync(string message)
         {
-            Dispatcher?.BeginInvoke(() =>
+            if(Package == null)
             {
-                s_dte.StatusBar.Text = message;
-            }, DispatcherPriority.ApplicationIdle, null);
+                return;
+            }
+
+            await Package.JoinableTaskFactory.SwitchToMainThreadAsync();
+
+            if(s_vsStatusBar == null)
+            {
+                s_vsStatusBar = await Package.GetServiceAsync(typeof(SVsStatusbar)) as IVsStatusbar;
+            }
+
+            if(s_vsStatusBar != null)
+            {
+                s_vsStatusBar.SetText(message);
+            }
         }
     }
 }

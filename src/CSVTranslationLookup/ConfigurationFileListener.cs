@@ -5,6 +5,7 @@
 using System;
 using System.ComponentModel.Composition;
 using System.IO;
+using System.Threading.Tasks;
 using CSVTranslationLookup.Configuration;
 using CSVTranslationLookup.Services;
 using Microsoft.VisualStudio.Editor;
@@ -38,7 +39,7 @@ namespace CSVTranslationLookup.FIleListeners
 
                 if (filename.Equals(Config.ConfigurationFilename, StringComparison.OrdinalIgnoreCase))
                 {
-                    _document.FileActionOccurred += DocumentSaved;
+                    _document.FileActionOccurred += DocumentSavedAsync;
                 }
             }
 
@@ -56,15 +57,22 @@ namespace CSVTranslationLookup.FIleListeners
 
             if (_document is not null)
             {
-                _document.FileActionOccurred -= DocumentSaved;
+                _document.FileActionOccurred -= DocumentSavedAsync;
             }
         }
 
-        private void DocumentSaved(object sender, TextDocumentFileActionEventArgs e)
+        private async void DocumentSavedAsync(object sender, TextDocumentFileActionEventArgs e)
         {
             if (e.FileActionType == FileActionTypes.ContentSavedToDisk)
             {
-                CSVTranslationLookupPackage.Package?.LookupService?.ProcessConfig(e.FilePath);
+                try
+                {
+                    await CSVTranslationLookupPackage.Package?.LookupService?.ProcessConfigAsync(e.FilePath);
+                }
+                catch(Exception ex)
+                {
+                    Logger.Log(ex);
+                }
             }
         }
     }

@@ -68,6 +68,8 @@
       <LastGenOutput>VSCommandTable.cs</LastGenOutput>
     </VSCTCompile>
     <Compile Include="Sources\KeywordAsyncInfoSource.cs" />
+    <Compile Include="Utilities\ErrorHandler.cs" />
+    <Compile Include="Utilities\ProgressReporter.cs" />
     <Compile Include="VSCommandTable.cs">
       <AutoGen>True</AutoGen>
       <DesignTime>True</DesignTime>

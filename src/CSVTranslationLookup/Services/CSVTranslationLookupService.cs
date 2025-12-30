@@ -15,8 +15,8 @@ using CSVTranslationLookup.Common.Text;
 using CSVTranslationLookup.Common.Tokens;
 using CSVTranslationLookup.Common.Utilities;
 using CSVTranslationLookup.Configuration;
-using EnvDTE80;
-using Microsoft.VisualStudio.VCProjectEngine;
+using CSVTranslationLookup.Utilities;
+using Microsoft.VisualStudio.Shell.Interop;
 
 namespace CSVTranslationLookup.Services
 {
@@ -39,14 +39,13 @@ namespace CSVTranslationLookup.Services
         private readonly ConcurrentDictionary<string, DateTime> _lastEventTime = new ConcurrentDictionary<string, DateTime>();
         private readonly ConcurrentDictionary<string, Token> _resolvedTokenCache = new ConcurrentDictionary<string, Token>();
         private FileSystemWatcher _watcher;
-        private DTE2 DTE => CSVTranslationLookupPackage.DTE;
         private bool _isDisposed;
 
         public static Config Config { get; private set; }
 
         private void EnsureWatcher()
         {
-            if(_watcher != null)
+            if (_watcher != null)
             {
                 return;
             }
@@ -67,9 +66,9 @@ namespace CSVTranslationLookup.Services
         /// <summary>Processes a configuration file and initializes the CSV translation lookup service.</summary>
         /// <param name="configFile">The path to the configuration file to process.</param>
         /// <exception cref="ObjectDisposedException">Throw if this CSVTranslationLookupServerice has been disposed of.</exception>
-        public void ProcessConfig(string configFile)
+        public async Task ProcessConfigAsync(string configFile)
         {
-            if(_isDisposed)
+            if (_isDisposed)
             {
                 throw new ObjectDisposedException(nameof(CSVTranslationLookupService));
             }
@@ -77,7 +76,7 @@ namespace CSVTranslationLookup.Services
             // If we have already loaded a configuration file previously either during the initialization of this
             // extension or after one was created in a project, and this new configuration fiel is not hte same
             // file as the one we're already using, then we ignore.  Only use one configuration file.
-            if(Config != null && PathHelper.ArePathsEqual(Config.FileName, configFile))
+            if (Config != null && PathHelper.ArePathsEqual(Config.FileName, configFile))
             {
                 return;
             }
@@ -92,46 +91,47 @@ namespace CSVTranslationLookup.Services
                 Config = Config.FromFile(configFile, out ConfigValidationResult validationResult);
 
                 // Check if the file was loaded successfully
-                if(Config == null)
+                if (Config == null)
                 {
                     string errorMessage = "Failed to load configuration file.";
-                    if(validationResult != null && validationResult.Errors.Count > 0)
+                    if (validationResult != null && validationResult.Errors.Count > 0)
                     {
                         errorMessage = validationResult.GetFormattedMessage();
                     }
 
-                    Logger.Log(errorMessage);
-                    ShowError("Configuration file could not be loaded.  See See CSVTranslationLookup in Output Panel for details.");
-                    CSVTranslationLookupPackage.StatusText("Configuration file error; check Output Panel");
+                    await ErrorHandler.HandleAsync(
+                        context: "loading configuration file",
+                        userMessage: "Configuration file could not be loaded",
+                        suggestion: $"{errorMessage}\n\nCheck csvconfig.json for errors.",
+                        severity: ErrorHandler.ErrorSeverity.Error
+                    );
+
                     return;
                 }
 
-                // Check validation result
-                if(validationResult != null)
+                // Check validation result for errors
+                if (validationResult != null && !validationResult.IsValid)
                 {
-                    if(!validationResult.IsValid)
-                    {
-                        // Configuration has errors, log and notify
-                        Logger.Log(validationResult.GetFormattedMessage());
-                        ShowError($"Configuration file has errors:\n\n{validationResult.GetFormattedMessage()}\n\nPlease fix these issues in {Path.GetFileName(configFile)}");
-                        CSVTranslationLookupPackage.StatusText("Configuration validation failed; check Output panel");
-                        return;
-                    }
+                    await ErrorHandler.HandleAsync(
+                        context: "validating configuration file",
+                        userMessage: "Configuration file has errors",
+                        suggestion: $"{validationResult.GetFormattedMessage()}\n\nPlease fix these issues in {PathHelper.SafeGetFileName(configFile)}",
+                        severity: ErrorHandler.ErrorSeverity.Error
+                    );
+                }
 
-                    if(validationResult.Warnings.Count > 0)
-                    {
-                        // Configuration has warnings, log but continue
-                        Logger.Log($"Configuration loaded with warnings:\n{validationResult.GetFormattedMessage()}");
-                        CSVTranslationLookupPackage.StatusText($"Configuration loaded with {validationResult.Warnings.Count} warning(s)");
-                    }
-                    else
-                    {
-                        Logger.Log("Configuration loaded succsssfully with no issues");
-                    }
+                // Check validation result for warnings (non-blocking)
+                if (validationResult != null && validationResult.Warnings.Count > 0)
+                {
+                    await ErrorHandler.ShowWarningAsync(
+                        message: $"Configuration loaded with {validationResult.Warnings.Count} warning(s)",
+                        suggestion: validationResult.GetFormattedMessage(),
+                        showDialog: false
+                    );
                 }
 
 
-                if(Config.Diagnostic)
+                if (Config.Diagnostic)
                 {
                     StringBuilder builder = StringBuilderCache.Get();
                     builder.AppendLine("Configuration file loaded with the following values:");
@@ -154,22 +154,19 @@ namespace CSVTranslationLookup.Services
                     Logger.Log(builder.GetStringAndRecycle());
                 }
             }
-            catch(Exception ex)
+            catch (Exception ex)
             {
-                string message = "There was an unexpected error loading the configuration file. See CSVTranslationLookup in Output Panel for details.";
-                ShowError(message);
-                CSVTranslationLookupPackage.StatusText("Configuration error - check Output panel");
-                Logger.Log($"Unexpected error loading configuration from {configFile}:");
-                Logger.Log(ex);
+                await ErrorHandler.HandleAsync(
+                    context: "loading configuration file",
+                    exception: ex
+                );
                 return;
             }
-            finally
-            {
-                DTE.StatusBar.Progress(false);
-            }
 
-            // Try to process the CSV files to get the keyword tokens
-            // Exceptions are logged in the CSVTranslationOutput panel.
+            // Process CSV files
+            DirectoryInfo dir = null;
+            FileInfo[] csvFiles = null;
+
             try
             {
                 _tokens.Clear();
@@ -177,37 +174,87 @@ namespace CSVTranslationLookup.Services
 
                 if (Config?.Diagnostic ?? false)
                 {
-                    Logger.Log("Resolved token cache cleared");
+                    Logger.Log("Token caches cleared");
                 }
-            
-            
-                DirectoryInfo dir = Config.GetAbsoluteWatchDirectory();
 
-                ParallelQuery<ParallelQuery<TokenizedRow>> query = dir.GetFiles("*.csv")
-                                                                      .AsParallel()
-                                                                      .WithDegreeOfParallelism(Environment.ProcessorCount)
-                                                                      .Select(x =>
-                                                                      {
-                                                                          if (Config.Diagnostic)
-                                                                          {
-                                                                              Logger.Log("Processing: " + x.FullName);
-                                                                          }
-                                                                          return CSVFileProcessor.ProcessFile(x.FullName, Config.Delimiter, Config.Quote);
-                                                                      });
+                // Get the watch directory            
+                dir = Config.GetAbsoluteWatchDirectory();
 
-                foreach(ParallelQuery<TokenizedRow> rowQuery in query)
+                // Get CSV files
+                csvFiles = dir.GetFiles("*.csv");
+
+                if (csvFiles.Length == 0)
                 {
-                    AddTokens(rowQuery);
-                }
+                    await ErrorHandler.ShowWarningAsync(
+                        message: $"No CSV files found in {dir.FullName}",
+                        suggestion: "Add CSV files to the watch directory or check the watchPath configuration.",
+                        showDialog: false
+                    );
 
-                _watcher.Path = dir.FullName;
-                _watcher.EnableRaisingEvents = true;
+                    _watcher.Path = dir.FullName;
+                    _watcher.EnableRaisingEvents = true;
+                    return;
+                }
             }
-            catch(Exception ex)
+            catch (UnauthorizedAccessException ex)
             {
-                Logger.Log(ex);
-                DTE.StatusBar.Progress(false);
+                await ErrorHandler.HandleAsync(
+                    context: "accessing CSV directory",
+                    exception: ex,
+                    suggestion: "Try running Visual Studio as administrator or check folder permissions."
+                );
                 return;
+            }
+            catch (Exception ex)
+            {
+                await ErrorHandler.HandleAsync(
+                    context: "resolving CSV watch directory",
+                    exception: ex,
+                    suggestion: "Check that the watchPath in csvconfig.json is correct."
+                );
+                return;
+            }
+
+            // Process files with progress reporting
+            using (var progress = new ProgressReporter("Processing CSV files", csvFiles.Length, logProgress: Config.Diagnostic))
+            {
+                try
+                {
+                    ParallelQuery<(FileInfo file, ParallelQuery<TokenizedRow> rows)> query =
+                        csvFiles.AsParallel()
+                                .WithDegreeOfParallelism(Environment.ProcessorCount)
+                                .Select(file =>
+                                {
+                                    var rows = CSVFileProcessor.ProcessFile(file.FullName, Config.Delimiter, Config.Quote);
+                                    progress.ReportProgress(file.Name);
+                                    return (file, rows);
+                                });
+
+                    foreach (var (file, rowQuery) in query)
+                    {
+                        AddTokens(rowQuery);
+                    }
+
+                    _watcher.Path = dir.FullName;
+                    _watcher.EnableRaisingEvents = true;
+
+                    progress.Complete();
+
+                    await ErrorHandler.ShowSuccessAsync(
+                        message: $"Successfully loaded {_tokens.Count} translation keys from {csvFiles.Length}CSV file{(csvFiles.Length != 1 ? "s" : string.Empty)}",
+                        showDialog: false
+                    );
+                }
+                catch (Exception ex)
+                {
+                    progress.Cancel();
+
+                    await ErrorHandler.HandleAsync(
+                        context: "processing CSV files",
+                        exception: ex,
+                        suggestion: "Check that CSV files are not locked by another application and use valid format."
+                    );
+                }
             }
         }
 
@@ -235,32 +282,32 @@ namespace CSVTranslationLookup.Services
         /// </remarks>
         public bool TryGetToken(string key, out Token token)
         {
-            if(_isDisposed)
+            if (_isDisposed)
             {
                 token = null;
                 return false;
             }
 
             // Check cache first
-            if(_resolvedTokenCache.TryGetValue(key, out token))
+            if (_resolvedTokenCache.TryGetValue(key, out token))
             {
                 return token != null;
             }
 
             // Try direct lookup
-            if(_tokens.TryGetValue(key, out token))
+            if (_tokens.TryGetValue(key, out token))
             {
                 _resolvedTokenCache.TryAdd(key, token);
                 return true;
             }
 
             // Try fallback suffixes if configured
-            if(Config?.FallbackSuffixes != null && Config.FallbackSuffixes.Count > 0)
+            if (Config?.FallbackSuffixes != null && Config.FallbackSuffixes.Count > 0)
             {
-                foreach(string suffix in Config.FallbackSuffixes)
+                foreach (string suffix in Config.FallbackSuffixes)
                 {
                     string fallbackKey = key + suffix;
-                    if(_tokens.TryGetValue(fallbackKey, out token))
+                    if (_tokens.TryGetValue(fallbackKey, out token))
                     {
                         // Cache successful fallback lookup using the original key as cache key
                         _resolvedTokenCache.TryAdd(key, token);
@@ -284,20 +331,20 @@ namespace CSVTranslationLookup.Services
         private async Task RetryFileOperationsAsync(Action operation, CancellationToken cancellationToken)
         {
             int attempt = 0;
-            while(attempt < MaxRetryAttempts)
+            while (attempt < MaxRetryAttempts)
             {
                 try
                 {
                     operation();
                     return;
                 }
-                catch(IOException) when (attempt < MaxRetryAttempts - 1)
+                catch (IOException) when (attempt < MaxRetryAttempts - 1)
                 {
                     // File might be locked, wait and retry
                     attempt++;
                     await Task.Delay(RetryDelayMilliseconds * attempt, cancellationToken);
                 }
-                catch(UnauthorizedAccessException) when (attempt < MaxRetryAttempts - 1)
+                catch (UnauthorizedAccessException) when (attempt < MaxRetryAttempts - 1)
                 {
                     // File might be locked, wait and retry
                     attempt++;
@@ -308,13 +355,15 @@ namespace CSVTranslationLookup.Services
 
         private async void ProcessFileChangeAsync(string filePath, string removeOldPath = null)
         {
-            if(_isDisposed)
+            if (_isDisposed)
             {
                 return;
             }
 
+            string fileName = PathHelper.SafeGetFileName(filePath);
+
             // Cancel any existing operations fo rthis file
-            if(_fileChangeDebounce.TryGetValue(filePath, out var existingCts))
+            if (_fileChangeDebounce.TryGetValue(filePath, out var existingCts))
             {
                 existingCts.Cancel();
                 existingCts.Dispose();
@@ -327,6 +376,8 @@ namespace CSVTranslationLookup.Services
             {
                 // Debounce, wait for file operations to settle
                 await Task.Delay(DebounceDelayMilliseconds, cts.Token);
+
+                await CSVTranslationLookupPackage.StatusTextAsync($"Reloading {fileName}...");
 
                 // Perform the file processsing with retry logic
                 await RetryFileOperationsAsync(() =>
@@ -345,23 +396,43 @@ namespace CSVTranslationLookup.Services
                     }
                 }, cts.Token);
 
-                if(Config.Diagnostic)
+                await CSVTranslationLookupPackage.StatusTextAsync($"Reloaed {fileName}");
+
+                if (Config.Diagnostic)
                 {
                     Logger.Log($"Successfully processed file change: {filePath}");
                 }
             }
-            catch(OperationCanceledException)
+            catch (OperationCanceledException)
             {
                 // Operation was cancelled by a newer change, this is expected
-                if(Config.Diagnostic)
+                if (Config.Diagnostic)
                 {
                     Logger.Log($"File change processing cancelled for: {filePath}");
                 }
             }
-            catch(Exception ex)
+            catch(IOException)
             {
-                Logger.Log($"Error processing file change for {filePath}: {ex.Message}");
-                Logger.Log(ex);
+                // File might be locked
+                if(Config.Diagnostic)
+                {
+                    Logger.Log($"File templorarily locked, will retry on next change: {fileName}");
+                }
+
+                await ErrorHandler.ShowWarningAsync(
+                    message: $"Could not reloat {fileName}; file may be locked.",
+                    suggestion: "The file will be reloaded automatically when it beocmes avaialble.",
+                    showDialog: false
+                );
+            }
+            catch (Exception ex)
+            {
+                await ErrorHandler.HandleAsync(
+                    context: $"reloading CSV file '{fileName}'",
+                    exception: ex,
+                    suggestion: "Check that the file is not locked by another application and uses valid CSV format.",
+                    showDialog: false
+                );
             }
             finally
             {
@@ -374,13 +445,13 @@ namespace CSVTranslationLookup.Services
         {
             DateTime now = DateTime.UtcNow;
 
-            if(_lastEventTime.TryGetValue(filePath, out DateTime lastTime))
+            if (_lastEventTime.TryGetValue(filePath, out DateTime lastTime))
             {
                 double timeSinceLastEvent = (now - lastTime).TotalMilliseconds;
-                if(timeSinceLastEvent < DuplicateEventWindowMilliseconds)
+                if (timeSinceLastEvent < DuplicateEventWindowMilliseconds)
                 {
                     // This is likely a duplicated event
-                    if(Config.Diagnostic)
+                    if (Config.Diagnostic)
                     {
                         Logger.Log($"Ignoring duplicate event for {filePath} (oly {timeSinceLastEvent:F0}ms since last event");
                     }
@@ -399,19 +470,24 @@ namespace CSVTranslationLookup.Services
         /// </summary>
         private void CSVDeleted(object sender, FileSystemEventArgs e)
         {
-            if(_isDisposed)
+            if (_isDisposed)
             {
                 return;
             }
 
             // Filter out duplicate events (many editors trigger Changed multiple times)
-            if(IsDuplicateEvent(e.FullPath))
+            if (IsDuplicateEvent(e.FullPath))
             {
                 return;
             }
 
+            string fileName = PathHelper.SafeGetFileName(e.FullPath);
+
             Logger.Log($"{e.FullPath} was deleted, removing all entries associated with that file");
+
             RemoveTokensByFileName(e.FullPath);
+
+            _ = CSVTranslationLookupPackage.StatusTextAsync($"Removed tokens from deleted file: {fileName}");
         }
 
         /// <summary>
@@ -431,7 +507,10 @@ namespace CSVTranslationLookup.Services
                 return;
             }
 
-            Logger.Log($"'{e.FullPath}' was changed, updating entries...");
+            string fileName = PathHelper.SafeGetFileName(e.FullPath);
+
+            Logger.Log($"'{fileName}' was changed, updating entries...");
+
             ProcessFileChangeAsync(e.FullPath);
         }
 
@@ -446,7 +525,10 @@ namespace CSVTranslationLookup.Services
                 return;
             }
 
-            Logger.Log($"'{e.FullPath}' was created, updating entries...");
+            string fileName = PathHelper.SafeGetFileName(e.FullPath);
+
+            Logger.Log($"'{fileName}' was created, updating entries...");
+
             ProcessFileChangeAsync(e.FullPath);
         }
 
@@ -461,16 +543,20 @@ namespace CSVTranslationLookup.Services
                 return;
             }
 
-            Logger.Log($"'{e.OldFullPath}' was renamed, updating filepath for all entities associated with that file");
+            string oldFileName = PathHelper.SafeGetFileName(e.OldFullPath);
+            string newFileName = PathHelper.SafeGetFileName(e.FullPath);
+
+            Logger.Log($"File renamed: {oldFileName} → {newFileName}, updating entries...");
+
             ProcessFileChangeAsync(e.FullPath, e.OldFullPath);
         }
 
         private void AddTokens(ParallelQuery<TokenizedRow> rows)
         {
-            foreach(TokenizedRow row in rows)
+            foreach (TokenizedRow row in rows)
             {
                 // Row must have at minimum 2 tokens, a key and value
-                if(row.Tokens.Length < 2)
+                if (row.Tokens.Length < 2)
                 {
                     continue;
                 }
@@ -479,24 +565,24 @@ namespace CSVTranslationLookup.Services
                 Token value = row.Tokens[1];
 
                 // Ensure key
-                if(string.IsNullOrEmpty(key.Content))
+                if (string.IsNullOrEmpty(key.Content))
                 {
                     continue;
                 }
 
                 // Skip if this is the 'key':'en' row
-                if(key.Content.Equals("key", StringComparison.InvariantCultureIgnoreCase))
+                if (key.Content.Equals("key", StringComparison.InvariantCultureIgnoreCase))
                 {
                     continue;
                 }
 
                 // Skip if this is a key only row, this means it's a comment row
-                if(string.IsNullOrEmpty(value.Content))
+                if (string.IsNullOrEmpty(value.Content))
                 {
                     continue;
                 }
 
-                if(Config.Diagnostic)
+                if (Config.Diagnostic)
                 {
                     Logger.Log($"Adding Token: {key.Content}:{value.Content}");
                 }
@@ -509,37 +595,31 @@ namespace CSVTranslationLookup.Services
         {
             ParallelQuery<string> query = _tokens.AsParallel()
                                                  .WithDegreeOfParallelism(Environment.ProcessorCount)
-                                                 .Where(kvp => kvp.Value.FileName == fileName)
+                                                 .Where(kvp => PathHelper.ArePathsEqual(kvp.Value.FileName, fileName))
                                                  .Select(kvp => kvp.Key);
 
+            int count = 0;
             foreach (string key in query)
             {
                 _tokens.TryRemove(key, out _);
                 _resolvedTokenCache.TryRemove(key, out _);
+                count++;
             }
-        }
 
-        private static void ShowError(string message)
-        {
-            MessageBox.Show
-            (
-                message,
-                Vsix.Name,
-                MessageBoxButtons.OK,
-                MessageBoxIcon.Information,
-                MessageBoxDefaultButton.Button1,
-                MessageBoxOptions.ServiceNotification
-            );
+            if(Config?.Diagnostic ?? false)
+            {
+                Logger.Log($"Cleared {count} tokens from cache for file: {PathHelper.SafeGetFileName(fileName)}");
+            }
         }
 
         public void Dispose()
         {
-            if(_isDisposed)
+            if (_isDisposed)
             {
                 return;
             }
 
-            if(_watcher != null)
+            if (_watcher != null)
             {
                 _watcher.EnableRaisingEvents = false;
                 _watcher.Changed -= CSVChanged;
@@ -550,7 +630,7 @@ namespace CSVTranslationLookup.Services
                 _watcher = null;
             }
 
-            foreach(var kvp in _fileChangeDebounce)
+            foreach (var kvp in _fileChangeDebounce)
             {
                 kvp.Value.Cancel();
                 kvp.Value.Dispose();
