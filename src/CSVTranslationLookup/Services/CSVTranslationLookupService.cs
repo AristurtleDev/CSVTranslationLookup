@@ -36,6 +36,7 @@ namespace CSVTranslationLookup.Services
         private readonly ConcurrentDictionary<string, Token> _tokens = new ConcurrentDictionary<string, Token>(Environment.ProcessorCount, 31);
         private readonly ConcurrentDictionary<string, CancellationTokenSource> _fileChangeDebounce = new ConcurrentDictionary<string, CancellationTokenSource>();
         private readonly ConcurrentDictionary<string, DateTime> _lastEventTime = new ConcurrentDictionary<string, DateTime>();
+        private readonly ConcurrentDictionary<string, Token> _resolvedTokenCache = new ConcurrentDictionary<string, Token>();
         private FileSystemWatcher _watcher;
         private DTE2 DTE => CSVTranslationLookupPackage.DTE;
         private bool _isDisposed;
@@ -127,6 +128,14 @@ namespace CSVTranslationLookup.Services
             try
             {
                 _tokens.Clear();
+                _resolvedTokenCache.Clear();
+
+                if (Config?.Diagnostic ?? false)
+                {
+                    Logger.Log("Resolved token cache cleared");
+                }
+            
+            
                 DirectoryInfo dir = Config.GetAbsoluteWatchDirectory();
 
                 ParallelQuery<ParallelQuery<TokenizedRow>> query = dir.GetFiles("*.csv")
@@ -163,6 +172,22 @@ namespace CSVTranslationLookup.Services
         /// When this method returns, contains the token associated with the specified key, if found; otherwise, null.
         /// </param>
         /// <returns>true if the token was foundn; otherwise, false.</returns>
+        /// <remarks>
+        /// This method first checks a resolved token cache for quick lookups.  If not cached,
+        /// it searches the main token dictionary.  If not faound nd fallback suffixes are configured
+        /// it tries each suffix in order until a match is found or all suffixes are exhausted.
+        ///
+        /// Both successful and failed lookups are cached to avoid repeated work.  The cache is
+        /// cleared when CSV viles are modified to ensure fresh lookups reflect file changes.
+        ///
+        /// Example: If key is "ABILITY_NAME" and fallback suffixes are ["_M", "_F"] then seearch order is:
+        ///
+        /// 1. Check cache for "ABILITY_NAME"
+        /// 2. Try "ABILITY_NAME" in token dictionary
+        /// 3. Try "ABILITY_NAME_M" in token dictionary
+        /// 4. Try "ABILITY_NAME_F" in token dictionary
+        /// 5. Cache result (or null) and return
+        /// </remarks>
         public bool TryGetToken(string key, out Token token)
         {
             if(_isDisposed)
@@ -171,7 +196,44 @@ namespace CSVTranslationLookup.Services
                 return false;
             }
 
-            return _tokens.TryGetValue(key, out token);
+            // Check cache first
+            if(_resolvedTokenCache.TryGetValue(key, out token))
+            {
+                return token != null;
+            }
+
+            // Try direct lookup
+            if(_tokens.TryGetValue(key, out token))
+            {
+                _resolvedTokenCache.TryAdd(key, token);
+                return true;
+            }
+
+            // Try fallback suffixes if configured
+            if(Config?.FallbackSuffixes != null && Config.FallbackSuffixes.Count > 0)
+            {
+                foreach(string suffix in Config.FallbackSuffixes)
+                {
+                    string fallbackKey = key + suffix;
+                    if(_tokens.TryGetValue(fallbackKey, out token))
+                    {
+                        // Cache successful fallback lookup using the original key as cache key
+                        _resolvedTokenCache.TryAdd(key, token);
+
+                        if (Config.Diagnostic)
+                        {
+                            Logger.Log($"Token Lookup: '{key}' resolved via fallback '{fallbackKey}'");
+                        }
+
+                        return true;
+                    }
+                }
+            }
+
+            // Cache negative result to avoid repeated failed looups
+            _resolvedTokenCache.TryAdd(key, null);
+            token = null;
+            return false;
         }
 
         private async Task RetryFileOperationsAsync(Action operation, CancellationToken cancellationToken)
@@ -451,6 +513,7 @@ namespace CSVTranslationLookup.Services
             _lastEventTime.Clear();
 
             _tokens.Clear();
+            _resolvedTokenCache.Clear();
             _isDisposed = true;
         }
     }
