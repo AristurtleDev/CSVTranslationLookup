@@ -13,6 +13,7 @@ using System.Windows.Forms;
 using CSVTranslationLookup.Common.IO;
 using CSVTranslationLookup.Common.Text;
 using CSVTranslationLookup.Common.Tokens;
+using CSVTranslationLookup.Common.Utilities;
 using CSVTranslationLookup.Configuration;
 using EnvDTE80;
 using Microsoft.VisualStudio.VCProjectEngine;
@@ -76,7 +77,7 @@ namespace CSVTranslationLookup.Services
             // If we have already loaded a configuration file previously either during the initialization of this
             // extension or after one was created in a project, and this new configuration fiel is not hte same
             // file as the one we're already using, then we ignore.  Only use one configuration file.
-            if (Config is not null && Config.FileName.Equals(Path.GetFileName(configFile), StringComparison.InvariantCultureIgnoreCase))
+            if(Config != null && PathHelper.ArePathsEqual(Config.FileName, configFile))
             {
                 return;
             }
@@ -419,7 +420,7 @@ namespace CSVTranslationLookup.Services
         /// </summary>
         private void CSVChanged(object sender, FileSystemEventArgs e)
         {
-            if(_isDisposed || !File.Exists(e.FullPath) || Path.GetExtension(e.FullPath) != ".csv")
+            if (_isDisposed || !File.Exists(e.FullPath) || !PathHelper.HasExtension(e.FullPath, ".csv"))
             {
                 return;
             }
@@ -440,7 +441,7 @@ namespace CSVTranslationLookup.Services
         /// </summary>
         private void CSVCreated(object sender, FileSystemEventArgs e)
         {
-            if (_isDisposed || !File.Exists(e.FullPath) || Path.GetExtension(e.FullPath) != ".csv")
+            if (_isDisposed || !File.Exists(e.FullPath) || !PathHelper.HasExtension(e.FullPath, ".csv"))
             {
                 return;
             }
@@ -455,7 +456,7 @@ namespace CSVTranslationLookup.Services
         /// </summary>
         private void CSVRenamed(object sender, RenamedEventArgs e)
         {
-            if (_isDisposed || !File.Exists(e.FullPath) || Path.GetExtension(e.FullPath) != ".csv")
+            if (_isDisposed || !File.Exists(e.FullPath) || !PathHelper.HasExtension(e.FullPath, ".csv"))
             {
                 return;
             }

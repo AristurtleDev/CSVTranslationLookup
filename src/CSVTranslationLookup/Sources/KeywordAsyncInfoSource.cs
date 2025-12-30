@@ -7,6 +7,7 @@ using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
 using CSVTranslationLookup.Common.Tokens;
+using CSVTranslationLookup.Common.Utilities;
 using CSVTranslationLookup.Providers;
 using CSVTranslationLookup.Services;
 using Microsoft.VisualStudio.Core.Imaging;
@@ -82,7 +83,12 @@ namespace CSVTranslationLookup.Sources
                         ProcessStartInfo startInfo = new ProcessStartInfo();
                         if (!string.IsNullOrEmpty(CSVTranslationLookupService.Config.OpenWith))
                         {
-                            startInfo.WorkingDirectory = Path.GetDirectoryName(CSVTranslationLookupService.Config.OpenWith);
+                            string workingDir = PathHelper.GetWorkingDirectoryForExecutable(CSVTranslationLookupService.Config.OpenWith);
+                            if(!string.IsNullOrEmpty(workingDir))
+                            {
+                                startInfo.WorkingDirectory = workingDir;
+                            }
+                            
                             startInfo.FileName = CSVTranslationLookupService.Config.OpenWith;
                             startInfo.Arguments = token.FileName;
 

@@ -7,6 +7,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
+using CSVTranslationLookup.Common.Utilities;
 using Newtonsoft.Json;
 
 namespace CSVTranslationLookup.Configuration
@@ -94,10 +95,8 @@ namespace CSVTranslationLookup.Configuration
                 if (!string.IsNullOrEmpty(WatchPath))
                 {
                     // Normalize path separators for current platform
-                    string normalizedWatchPath = WatchPath.Replace('/', Path.DirectorySeparatorChar)
-                                                          .Replace('\\', Path.DirectorySeparatorChar);
-
-                    targetPath = Path.GetFullPath(Path.Combine(configDir, normalizedWatchPath));
+                    string normalizedWatchPath = PathHelper.NormalizePath(WatchPath);
+                    targetPath = PathHelper.GetFullPathSafe(PathHelper.SafeCombine(configDir, normalizedWatchPath));
                 }
 
                 return new DirectoryInfo(targetPath);
