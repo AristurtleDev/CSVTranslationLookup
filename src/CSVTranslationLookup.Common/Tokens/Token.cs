@@ -8,8 +8,12 @@ using System.Runtime.InteropServices;
 namespace CSVTranslationLookup.Common.Tokens
 {
     /// <summary>
-    /// Represents a single token (cel) in a CSV row.,
+    /// Represents a single token (cell) in a CSV row.
     /// </summary>
+    /// <remarks>
+    /// A token corresponds to a single field in a CSV file, with metadata about its type,
+    /// content, source file, and line number.
+    /// </remarks>
     public class Token : IEquatable<Token>
     {
         /// <summary>
@@ -28,7 +32,7 @@ namespace CSVTranslationLookup.Common.Tokens
         public string FileName { get; set; } = string.Empty;
 
         /// <summary>
-        /// Gets the line number within the file this token is at.
+        /// Gets or sets the line number within the file where this token appears.
         /// </summary>
         public int LineNumber { get; set; }
 
@@ -36,20 +40,42 @@ namespace CSVTranslationLookup.Common.Tokens
         /// Initializes a new instance of the <see cref="Token"/> class.
         /// </summary>
         /// <param name="tokenType">The type of token.</param>
-        /// <param name="content">The string contents of the token.</param>
+        /// <param name="content">The string contents of the token. Can be <see langword="null"/> for empty tokens.</param>
         public Token(TokenType tokenType, string content = null)
         {
             TokenType = tokenType;
             Content = content;
         }
 
-        /// <inheritdoc />
+        /// <summary>
+        /// Determines whether the specified object is equal to the current token.
+        /// </summary>
+        /// <param name="obj">The object to compare with the current token.</param>
+        /// <returns>
+        /// <see langword="true"/> if the specified object is a <see cref="Token"/> and has the same
+        /// <see cref="TokenType"/> and <see cref="Content"/>; otherwise, <see langword="false"/>.
+        /// </returns>
+        /// <remarks>
+        /// File location metadata (<see cref="FileName"/> and <see cref="LineNumber"/>) is not
+        /// considered in equality comparisons.
+        /// </remarks>
         public override bool Equals(object obj)
         {
             return obj is Token other && Equals(other);
         }
 
-        /// <inheritdoc />
+        /// <summary>
+        /// Determines whether the specified token is equal to the current token.
+        /// </summary>
+        /// <param name="other">The token to compare with the current token.</param>
+        /// <returns>
+        /// <see langword="true"/> if the specified token has the same <see cref="TokenType"/>
+        /// and <see cref="Content"/>; otherwise, <see langword="false"/>.
+        /// </returns>
+        /// <remarks>
+        /// File location metadata (<see cref="FileName"/> and <see cref="LineNumber"/>) is not
+        /// considered in equality comparisons.
+        /// </remarks>
         public bool Equals(Token other)
         {
             return other != null &&
@@ -57,7 +83,18 @@ namespace CSVTranslationLookup.Common.Tokens
                    Content == other.Content;
         }
 
-        /// <inheritdoc />
+        /// <summary>
+        /// Returns the hash code for this token.
+        /// </summary>
+        /// <returns>
+        /// A 32-bit signed integer hash code based on <see cref="TokenType"/>, <see cref="Content"/>,
+        /// <see cref="FileName"/>, and <see cref="LineNumber"/>.
+        /// </returns>
+        /// <remarks>
+        /// The hash code includes file location metadata even though equality comparisons do not.
+        /// This allows tokens from different file locations to hash differently while still being
+        /// considered equal based on content.
+        /// </remarks>
         public override int GetHashCode()
         {
             unchecked

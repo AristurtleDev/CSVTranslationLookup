@@ -105,7 +105,7 @@ namespace CSVTranslationLookup
 
         public static void Log(Exception ex)
         {
-            if (ex is null)
+            if (ex == null)
             {
                 return;
             }
@@ -128,7 +128,7 @@ namespace CSVTranslationLookup
 
         public static void Log(string message, Exception ex)
         {
-            if(ex is null)
+            if(ex == null)
             {
                 Log(message);
                 return;
@@ -153,7 +153,7 @@ namespace CSVTranslationLookup
 
         public static void LogProgress(bool inProgress, string label = "", int completed = 0, int total = 0)
         {
-            if (CSVTranslationLookupPackage.DTE is null)
+            if (CSVTranslationLookupPackage.DTE == null)
             {
                 return;
             }

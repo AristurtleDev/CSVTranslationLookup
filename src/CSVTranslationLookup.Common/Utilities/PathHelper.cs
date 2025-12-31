@@ -11,13 +11,26 @@ namespace CSVTranslationLookup.Common.Utilities
     /// <summary>
     /// Provides safe, cross-platform path manipulation utilities.
     /// </summary>
+    /// <remarks>
+    /// All methods handle invalid paths gracefully by returning null, empty strings, or the original
+    /// input rather than throwing exceptions. Path separators are normalized to the current platform's
+    /// directory separator. Path comparisons account for platform-specific case sensitivity
+    /// (case-insensitive on Windows, case-sensitive on Unix-like systems).
+    /// </remarks>
     public static class PathHelper
     {
         /// <summary>
-        /// Normalizes path seperators to the currnet platform's directory seperator
+        /// Normalizes path separators to the current platform's directory separator.
         /// </summary>
         /// <param name="path">The path to normalize.</param>
-        /// <returns>The normalized path, or null if input was null.</returns>
+        /// <returns>
+        /// The normalized path with platform-specific separators, or <see langword="null"/> if input was <see langword="null"/>.
+        /// </returns>
+        /// <remarks>
+        /// Replaces both forward slashes (/) and backslashes (\) with the platform-specific
+        /// directory separator (<see cref="Path.DirectorySeparatorChar"/>). This ensures paths
+        /// work correctly on both Windows and Unix-like systems.
+        /// </remarks>
         public static string NormalizePath(string path)
         {
             if (string.IsNullOrEmpty(path))
@@ -25,17 +38,23 @@ namespace CSVTranslationLookup.Common.Utilities
                 return path;
             }
 
-            // Replace both forward and backslashes with platform-specific seperator
+            // Replace both forward and backslashes with platform-specific separator
             return path.Replace('/', Path.DirectorySeparatorChar)
                        .Replace('\\', Path.DirectorySeparatorChar);
         }
 
         /// <summary>
-        /// Safely combines multiple path components, handling null/empty values.
+        /// Safely combines multiple path components, handling null and empty values.
         /// </summary>
-        /// <param name="paths">The paths components to combine.</param>
-        /// <returns>The combine path.</returns>
-        /// <exception cref="ArgumentException">Thrown when no valid paths provided.</exception>
+        /// <param name="paths">The path components to combine.</param>
+        /// <returns>The combined path with normalized separators.</returns>
+        /// <exception cref="ArgumentException">
+        /// Thrown when no paths are provided or all path components are null or empty.
+        /// </exception>
+        /// <remarks>
+        /// Filters out null and empty path components before combining. All valid components
+        /// are normalized to use platform-specific directory separators before being combined.
+        /// </remarks>
         public static string SafeCombine(params string[] paths)
         {
             if (paths == null || paths.Length == 0)
@@ -43,24 +62,31 @@ namespace CSVTranslationLookup.Common.Utilities
                 throw new ArgumentException("At least one path component required", nameof(paths));
             }
 
-            // Filter out null/empty paths and combine
+            // Filter out null/empty paths
             var validPaths = paths.Where(p => !string.IsNullOrEmpty(p)).ToArray();
             if (validPaths.Length == 0)
             {
                 throw new ArgumentException("All path components were null or empty", nameof(paths));
             }
 
-            // Normalize seperators in all components
+            // Normalize separators in all components before combining
             var normalizedPaths = validPaths.Select(NormalizePath).ToArray();
 
             return Path.Combine(normalizedPaths);
         }
 
         /// <summary>
-        /// Safely gets the directory name froma path, returning null if path is invalid.
+        /// Safely gets the directory name from a path, returning <see langword="null"/> if the path is invalid.
         /// </summary>
-        /// <param name="path">The path to extract directory from.</param>
-        /// <returns>The directory name, or null if path is null/empty or extraction fails.</returns>
+        /// <param name="path">The path to extract the directory from.</param>
+        /// <returns>
+        /// The directory name, or <see langword="null"/> if the path is null, empty, or extraction fails.
+        /// </returns>
+        /// <remarks>
+        /// Catches exceptions from <see cref="Path.GetDirectoryName(string)"/> and returns null
+        /// instead of propagating them. This includes <see cref="ArgumentException"/> for invalid
+        /// characters and <see cref="PathTooLongException"/>.
+        /// </remarks>
         public static string SafeGetDirectoryName(string path)
         {
             if (string.IsNullOrEmpty(path))
@@ -84,10 +110,16 @@ namespace CSVTranslationLookup.Common.Utilities
         }
 
         /// <summary>
-        /// Safely gets the file name from a path, returning null if path is invalid.
+        /// Safely gets the file name from a path, returning <see langword="null"/> if the path is invalid.
         /// </summary>
-        /// <param name="path">The path to extract file name from.</param>
-        /// <returns>The file name, or null if path is null/empty or extraction fails.</returns>
+        /// <param name="path">The path to extract the file name from.</param>
+        /// <returns>
+        /// The file name with extension, or <see langword="null"/> if the path is null, empty, or extraction fails.
+        /// </returns>
+        /// <remarks>
+        /// Catches exceptions from <see cref="Path.GetFileName(string)"/> and returns null
+        /// instead of propagating them.
+        /// </remarks>
         public static string SafeGetFileName(string path)
         {
             if (string.IsNullOrEmpty(path))
@@ -106,10 +138,16 @@ namespace CSVTranslationLookup.Common.Utilities
         }
 
         /// <summary>
-        /// Safely gets the file extension from a path, returning null if path is invalid.
+        /// Safely gets the file extension from a path, returning <see langword="null"/> if the path is invalid.
         /// </summary>
-        /// <param name="path">The path to extract extension from.</param>
-        /// <returns>The extension (including dot), or null if path is invalid.</returns>
+        /// <param name="path">The path to extract the extension from.</param>
+        /// <returns>
+        /// The extension including the leading dot (e.g., ".csv"), or <see langword="null"/> if the path is invalid.
+        /// </returns>
+        /// <remarks>
+        /// Catches exceptions from <see cref="Path.GetExtension(string)"/> and returns null
+        /// instead of propagating them.
+        /// </remarks>
         public static string SafeGetExtension(string path)
         {
             if (string.IsNullOrEmpty(path))
@@ -132,7 +170,14 @@ namespace CSVTranslationLookup.Common.Utilities
         /// </summary>
         /// <param name="path">The path to check.</param>
         /// <param name="extension">The extension to check for (with or without leading dot).</param>
-        /// <returns>true if path has the specified extension; otherwise, false.</returns>
+        /// <returns>
+        /// <see langword="true"/> if the path has the specified extension; otherwise, <see langword="false"/>.
+        /// </returns>
+        /// <remarks>
+        /// The extension comparison is case-insensitive. The extension parameter can be provided
+        /// with or without a leading dot (e.g., both ".csv" and "csv" work). Returns false if
+        /// either parameter is null or empty.
+        /// </remarks>
         public static bool HasExtension(string path, string extension)
         {
             if (string.IsNullOrEmpty(path) || string.IsNullOrEmpty(extension))
@@ -152,11 +197,18 @@ namespace CSVTranslationLookup.Common.Utilities
         }
 
         /// <summary>
-        /// Compares two file paths for equality, accounting for case sensiivity.
+        /// Compares two file paths for equality, accounting for platform-specific case sensitivity.
         /// </summary>
         /// <param name="path1">The first path.</param>
         /// <param name="path2">The second path.</param>
-        /// <returns>true if paths are equal; otherwise, false.</returns>
+        /// <returns>
+        /// <see langword="true"/> if the paths are equal; otherwise, <see langword="false"/>.
+        /// </returns>
+        /// <remarks>
+        /// Normalizes both paths to use platform-specific separators before comparing.
+        /// Uses case-insensitive comparison on Windows (where paths are case-insensitive) and
+        /// case-sensitive comparison on Unix-like systems. Returns true if both paths are null.
+        /// </remarks>
         public static bool ArePathsEqual(string path1, string path2)
         {
             if (path1 == null && path2 == null)
@@ -169,10 +221,11 @@ namespace CSVTranslationLookup.Common.Utilities
                 return false;
             }
 
-            // Normalize both paths
+            // Normalize both paths to platform-specific separators
             string normalized1 = NormalizePath(path1);
             string normalized2 = NormalizePath(path2);
 
+            // Use case-insensitive comparison on Windows, case-sensitive on Unix-like systems
             StringComparison comparison = Path.DirectorySeparatorChar == '\\' ?
                                           StringComparison.OrdinalIgnoreCase :
                                           StringComparison.Ordinal;
@@ -181,10 +234,17 @@ namespace CSVTranslationLookup.Common.Utilities
         }
 
         /// <summary>
-        /// Attempts to get the full absolute path, returning the original path if it fails.
+        /// Attempts to get the full absolute path, returning the original path if conversion fails.
         /// </summary>
         /// <param name="path">The path to get the full path for.</param>
-        /// <returns>The full absolute path, or the original path if conversion fails.</returns>
+        /// <returns>
+        /// The full absolute path, or the original path if conversion fails or the path is invalid.
+        /// </returns>
+        /// <remarks>
+        /// Catches exceptions from <see cref="Path.GetFullPath(string)"/> and returns the original
+        /// path instead of propagating them. This includes <see cref="ArgumentException"/>,
+        /// <see cref="PathTooLongException"/>, and <see cref="NotSupportedException"/>.
+        /// </remarks>
         public static string GetFullPathSafe(string path)
         {
             if (string.IsNullOrEmpty(path))
@@ -214,7 +274,13 @@ namespace CSVTranslationLookup.Common.Utilities
         /// Checks if a path is rooted (absolute) safely.
         /// </summary>
         /// <param name="path">The path to check.</param>
-        /// <returns>true if path is rooted; flase if not rooted or invalid.</returns>
+        /// <returns>
+        /// <see langword="true"/> if the path is rooted; <see langword="false"/> if not rooted or invalid.
+        /// </returns>
+        /// <remarks>
+        /// Catches exceptions from <see cref="Path.IsPathRooted(string)"/> and returns false
+        /// instead of propagating them. Returns false for null or empty paths.
+        /// </remarks>
         public static bool IsPathRooted(string path)
         {
             if (string.IsNullOrEmpty(path))
@@ -233,10 +299,17 @@ namespace CSVTranslationLookup.Common.Utilities
         }
 
         /// <summary>
-        /// Ensures a path ends with the directory seperator character.
+        /// Ensures a path ends with the directory separator character.
         /// </summary>
-        /// <param name="path">The path to ensure ends with separater.</param>
-        /// <returns>The path with trailing seperator, or the original path if null/empty.</returns>
+        /// <param name="path">The path to ensure ends with a separator.</param>
+        /// <returns>
+        /// The path with a trailing separator, or the original path if null or empty.
+        /// </returns>
+        /// <remarks>
+        /// Adds <see cref="Path.DirectorySeparatorChar"/> to the end of the path if it doesn't
+        /// already end with either <see cref="Path.DirectorySeparatorChar"/> or
+        /// <see cref="Path.AltDirectorySeparatorChar"/>.
+        /// </remarks>
         public static string EnsureTrailingSeparator(string path)
         {
             if (string.IsNullOrEmpty(path))
@@ -254,10 +327,16 @@ namespace CSVTranslationLookup.Common.Utilities
         }
 
         /// <summary>
-        /// Removes trailing directory seperator characters from a path.
+        /// Removes trailing directory separator characters from a path.
         /// </summary>
-        /// <param name="path">The path to remove trailing seperator from.</param>
-        /// <returns>The path without trailing seperator, or the original path if null/empty.</returns>
+        /// <param name="path">The path to remove trailing separators from.</param>
+        /// <returns>
+        /// The path without trailing separators, or the original path if null or empty.
+        /// </returns>
+        /// <remarks>
+        /// Removes both <see cref="Path.DirectorySeparatorChar"/> and
+        /// <see cref="Path.AltDirectorySeparatorChar"/> from the end of the path.
+        /// </remarks
         public static string RemoveTrailingSeparator(string path)
         {
             if (string.IsNullOrEmpty(path))
@@ -269,13 +348,18 @@ namespace CSVTranslationLookup.Common.Utilities
         }
 
         /// <summary>
-        /// Gets the working directory for an exectuable path, defaulting to exectuable's directory.
+        /// Gets the working directory for an executable path.
         /// </summary>
-        /// <param name="executablePath">The path to the exectuable.</param>
+        /// <param name="executablePath">The path to the executable.</param>
         /// <returns>
-        /// The directory containing the exectuable, or null if path is invalid.
-        /// Returns null for command-only paths (no directory seperators).
+        /// The directory containing the executable, or <see langword="null"/> if the path is invalid
+        /// or contains only a command name without directory separators.
         /// </returns>
+        /// <remarks>
+        /// Returns null for command-only paths (e.g., "notepad.exe") that don't contain directory
+        /// separators. For full paths (e.g., "C:\Program Files\App\app.exe"), returns the directory
+        /// portion. Useful for determining the working directory when launching external applications.
+        /// </remarks>
         public static string GetWorkingDirectoryForExecutable(string executablePath)
         {
             if (string.IsNullOrEmpty(executablePath))
@@ -296,9 +380,18 @@ namespace CSVTranslationLookup.Common.Utilities
         /// <summary>
         /// Creates a relative path from one path to another.
         /// </summary>
-        /// <param name="fromPath">The source path.</param>
-        /// <param name="toPath">The destination path.</param>
-        /// <returns>The relative path, or the toPath if relative path cannot be created.</returns>
+        /// <param name="fromPath">The source path (starting point).</param>
+        /// <param name="toPath">The destination path (target).</param>
+        /// <returns>
+        /// The relative path from <paramref name="fromPath"/> to <paramref name="toPath"/>,
+        /// or <paramref name="toPath"/> if a relative path cannot be created.
+        /// </returns>
+        /// <remarks>
+        /// Both paths are converted to absolute paths before computing the relationship.
+        /// The result is normalized to use platform-specific directory separators.
+        /// Returns <paramref name="toPath"/> if either parameter is null or empty, or
+        /// if the operation fails.
+        /// </remarks>
         public static string GetRelativePath(string fromPath, string toPath)
         {
             if (string.IsNullOrEmpty(fromPath) || string.IsNullOrEmpty(toPath))
@@ -308,16 +401,20 @@ namespace CSVTranslationLookup.Common.Utilities
 
             try
             {
+                // Convert both paths to absolute paths
                 Uri fromUri = new Uri(GetFullPathSafe(fromPath));
                 Uri toUri = new Uri(GetFullPathSafe(toPath));
 
+                // Compute relative path
                 Uri relativeUri = fromUri.MakeRelativeUri(toUri);
                 string relativePath = Uri.UnescapeDataString(relativeUri.ToString());
 
+                // Normalize to platform-specific separators
                 return NormalizePath(relativePath);
             }
             catch
             {
+                // If anything fails, return the original destination path
                 return toPath;
             }
         }

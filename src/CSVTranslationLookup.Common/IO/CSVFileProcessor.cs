@@ -4,7 +4,6 @@
 
 using System;
 using System.Collections.Generic;
-using System.Data;
 using System.IO;
 using System.Linq;
 using System.Text;
@@ -14,23 +13,43 @@ using CSVTranslationLookup.Common.Tokens;
 namespace CSVTranslationLookup.Common.IO
 {
     /// <summary>
-    /// Provides methos for processing and tokenizing a CSV file.
+    /// Provides methods for processing and tokenizing CSV files.
     /// </summary>
+    /// <remarks>
+    /// Handles complex CSV parsing including quoted fields, escaped quotes (double quotes),
+    /// and multi-line quoted fields. Files are opened with shared read/write access to allow
+    /// concurrent access by other applications. Parsing is performed sequentially with
+    /// tokenization parallelized for optimal performance.
+    /// </remarks>
     public static class CSVFileProcessor
     {
         /// <summary>
-        /// Tokenizes and processes a CSV file, returning a parallel query of TokenizedRow instances.
+        /// Processes a CSV file and returns a parallel query of tokenized rows.
         /// </summary>
-        /// <param name="filename">The path of the CSV file to be processed.</param>
-        /// <param name="delimiter">The character that represents a delimiter.</param>
-        /// <param name="quote">The character that represents the start of a quoted token.</param>
+        /// <param name="filename">The path of the CSV file to process.</param>
+        /// <param name="delimiter">The character that represents a field delimiter. Defaults to <c>,</c> (comma).</param>
+        /// <param name="quote">The character that represents the start and end of a quoted field. Defaults to <c>"</c> (double quote).</param>
         /// <returns>
-        /// A parallel query of TokenizedRow instances representing the tokenized content of the CSV file.
+        /// A parallel query of <see cref="TokenizedRow"/> instances representing the tokenized content of the CSV file,
+        /// maintaining the original row order.
         /// </returns>
+        /// <remarks>
+        /// The processing handles:
+        /// <list type="bullet">
+        /// <item>Quoted fields that may contain delimiters and newlines</item>
+        /// <item>Escaped quotes (two consecutive quote characters within a quoted field)</item>
+        /// <item>Multi-line quoted fields that span multiple lines in the file</item>
+        /// <item>Empty rows (which are skipped)</item>
+        /// </list>
+        /// The file is opened with <see cref="FileShare.ReadWrite"/> to allow other applications
+        /// to access it concurrently. Row parsing is sequential to handle multi-line quoted fields,
+        /// but tokenization is parallelized using all available processor cores for performance.
+        /// </remarks>
         public static ParallelQuery<TokenizedRow> ProcessFile(string filename, char delimiter = ',', char quote = '"')
         {
             List<string> rows = new List<string>();
 
+            // Open with FileShare.ReadWrite to allow concurrent access by other applications
             using (FileStream fs = new FileStream(filename, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
             {
                 using (StreamReader reader = new StreamReader(fs))
@@ -59,7 +78,7 @@ namespace CSVTranslationLookup.Common.IO
                                 }
                                 else
                                 {
-                                    // Toggle quote state
+                                    // Toggle quote state (entering or leaving quoted field)
                                     inQuotedField = !inQuotedField;
                                     currentRow.Append(c);
                                 }
@@ -77,7 +96,7 @@ namespace CSVTranslationLookup.Common.IO
                         }
                         else
                         {
-                            // End of row, add to collection and reset
+                            // End of row, add to collection and reset for next row
                             string rowText = currentRow.ToString().Trim();
                             if (!string.IsNullOrWhiteSpace(rowText))
                             {
@@ -87,7 +106,7 @@ namespace CSVTranslationLookup.Common.IO
                         }
                     }
 
-                    // Handle any remaining content (file witout trailing new line)
+                    // Handle any remaining content (file without trailing new line)
                     if (currentRow.Length > 0)
                     {
                         string rowText = currentRow.ToString().Trim();
@@ -101,11 +120,12 @@ namespace CSVTranslationLookup.Common.IO
                 }
             }
 
-            // Tokenize rows in parallel for performance
+            // Tokenize rows in parallel for performance while maintaining order
             var query = rows.AsParallel()
                             .AsOrdered()
                             .WithDegreeOfParallelism(Environment.ProcessorCount);
 
+            // Line number is index + 1 (1-based) for user-friendly display
             return query.Select((line, index) => new TokenizedRow(filename, index, Tokenizer.Tokenize(line, filename, index + 1, delimiter, quote)));
         }
     }

@@ -12,12 +12,18 @@ using CSVTranslationLookup.Common.Text;
 namespace CSVTranslationLookup.Utilities
 {
     /// <summary>
-    /// Provides centralized error handling with user friendly messages and logging.
+    /// Provides centralized error handling with user-friendly messages and logging.
     /// </summary>
+    /// <remarks>
+    /// This handler automatically generates appropriate error messages and suggestions based on
+    /// exception types, logs detailed diagnostics to the output window, updates the status bar,
+    /// and optionally displays user-friendly dialogs. All methods are thread-safe and can be
+    /// called from any context.
+    /// </remarks>
     internal static class ErrorHandler
     {
         /// <summary>
-        /// Represents teh severity level of an error.
+        /// Represents the severity level of an error.
         /// </summary>
         public enum ErrorSeverity
         {
@@ -37,20 +43,30 @@ namespace CSVTranslationLookup.Utilities
             Error,
 
             /// <summary>
-            /// Critical (extension functinality severely impaired).
+            /// Critical (extension functionality severely impaired).
             /// </summary>
             Critical
         }
 
         /// <summary>
-        /// Handles an error with user friendly messaging and logging.
+        /// Handles an error with user-friendly messaging and logging.
         /// </summary>
-        /// <param name="context">What was being attempted when the error occured.</param>
-        /// <param name="exception">The exception that occured.</param>
-        /// <param name="userMessage">Optional user friendly message (will be generated if not provided).</param>
-        /// <param name="suggestion">Optional suggestion for how to fix the problem (will be genereated if not provided).</param>
+        /// <param name="context">What was being attempted when the error occurred.</param>
+        /// <param name="exception">The exception that occurred.</param>
+        /// <param name="userMessage">Optional user-friendly message. If not provided, a message will be generated based on the exception type.</param>
+        /// <param name="suggestion">Optional suggestion for how to fix the problem. If not provided, a suggestion will be generated based on the exception type.</param>
         /// <param name="severity">The severity level of the error.</param>
-        /// <param name="showDialog">Whether to show a dialog to the user.</param>
+        /// <param name="showDialog">Whether to show a dialog to the user. Default is <see langword="true"/>.</param>
+        /// <remarks>
+        /// This method performs three actions:
+        /// <list type="number">
+        /// <item>Logs detailed error information including stack trace to the output window</item>
+        /// <item>Updates the status bar with a brief error message</item>
+        /// <item>Optionally displays a user-friendly dialog with suggestions</item>
+        /// </list>
+        /// Messages and suggestions are automatically generated for common exception types
+        /// (FileNotFoundException, UnauthorizedAccessException, etc.) if not explicitly provided.
+        /// </remarks>
         public static async Task HandleAsync(string context, Exception exception, string userMessage = null, string suggestion = null, ErrorSeverity severity = ErrorSeverity.Error, bool showDialog = true)
         {
             // Generate user message if not provided
@@ -75,13 +91,18 @@ namespace CSVTranslationLookup.Utilities
         }
 
         /// <summary>
-        /// Handles an error without an execption.
+        /// Handles an error without an exception.
         /// </summary>
         /// <param name="context">What was being attempted.</param>
-        /// <param name="userMessage">User firendly message.</param>
-        /// <param name="suggestion">Optional suggesetion for how to fix the problem.</param>
+        /// <param name="userMessage">User-friendly message.</param>
+        /// <param name="suggestion">Optional suggestion for how to fix the problem.</param>
         /// <param name="severity">The severity level of the error.</param>
-        /// <param name="showDialog">Whether to show a dialog to the user.</param>
+        /// <param name="showDialog">Whether to show a dialog to the user. Default is <see langword="true"/>.</param>
+        /// <remarks>
+        /// Use this overload when an error condition is detected without an exception being thrown,
+        /// such as validation failures or configuration errors. The error will be logged and
+        /// displayed to the user based on the showDialog parameter.
+        /// </remarks>
         public static async Task HandleAsync(string context, string userMessage, string suggestion = null, ErrorSeverity severity = ErrorSeverity.Error, bool showDialog = true)
         {
             LogDetailedError(context, null, userMessage, suggestion);
@@ -97,7 +118,11 @@ namespace CSVTranslationLookup.Utilities
         /// Shows a success message to the user.
         /// </summary>
         /// <param name="message">The success message.</param>
-        /// <param name="showDialog">Whether to show a dialog to the user.</param>
+        /// <param name="showDialog">Whether to show a dialog to the user. Default is <see langword="false"/>.</param>
+        /// <remarks>
+        /// Success messages are logged and displayed in the status bar. Dialogs are typically
+        /// not shown for success messages unless explicitly requested.
+        /// </remarks>
         public static async Task ShowSuccessAsync(string message, bool showDialog = false)
         {
             Logger.Log($"SUCCESS: {message}");
@@ -113,8 +138,12 @@ namespace CSVTranslationLookup.Utilities
         /// Shows a warning to the user.
         /// </summary>
         /// <param name="message">The warning message.</param>
-        /// <param name="suggestion">Optional suggesetion for how to fix the problem.</param>
-        /// <param name="showDialog">Whether to show a dialog to the user.</param>
+        /// <param name="suggestion">Optional suggestion for how to fix the problem.</param>
+        /// <param name="showDialog">Whether to show a dialog to the user. Default is <see langword="false"/>.</param>
+        /// <remarks>
+        /// Warnings indicate potential issues that don't prevent the operation from continuing.
+        /// If a suggestion is provided, it will be appended to the message in both the log and dialog.
+        /// </remarks>
         public static async Task ShowWarningAsync(string message, string suggestion = null, bool showDialog = false)
         {
             string fullMessage;
@@ -138,13 +167,21 @@ namespace CSVTranslationLookup.Utilities
         }
 
         /// <summary>
-        /// Generates a user friendly message based on exception.
+        /// Generates a user-friendly message based on the exception type.
         /// </summary>
+        /// <param name="context">The operation context.</param>
+        /// <param name="exception">The exception to generate a message for.</param>
+        /// <returns>A user-friendly error message appropriate for the exception type.</returns>
+        /// <remarks>
+        /// Provides specialized messages for common exception types including file I/O errors,
+        /// access denied, format errors, and memory issues. Falls back to the exception's message
+        /// for unknown exception types.
+        /// </remarks>
         private static string GenerateUserMessage(string context, Exception exception)
         {
             if (exception == null)
             {
-                return $"An error occured while {context}.";
+                return $"An error occurred while {context}.";
             }
 
             switch (exception)
@@ -159,7 +196,7 @@ namespace CSVTranslationLookup.Utilities
                     return $"A required directory was not found while {context}.";
 
                 case IOException ioEx:
-                    return $"An I/O error occured while {context}: {ioEx.Message}";
+                    return $"An I/O error occurred while {context}: {ioEx.Message}";
 
                 case FormatException:
                     return $"Invalid format encountered while {context}.  The data may be corrupted or in an unexpected format.";
@@ -177,13 +214,20 @@ namespace CSVTranslationLookup.Utilities
                     return $"Operation timed out while {context}.  The file may be locked by another application.";
 
                 default:
-                    return $"An unexpected error occured while {context}: {exception.Message}";
+                    return $"An unexpected error occurred while {context}: {exception.Message}";
             }
         }
 
         /// <summary>
-        /// Generates a suggeestion based on the exception type.
+        /// Generates a suggestion for resolving the error based on the exception type.
         /// </summary>
+        /// <param name="exception">The exception to generate a suggestion for.</param>
+        /// <returns>A helpful suggestion appropriate for the exception type.</returns>
+        /// <remarks>
+        /// Provides actionable guidance for resolving common issues such as file locks,
+        /// permission problems, and configuration errors. Directs users to the output
+        /// window for detailed diagnostics when specific guidance isn't available.
+        /// </remarks>
         private static string GenerateSuggestion(Exception exception)
         {
             if (exception == null)
@@ -222,6 +266,18 @@ namespace CSVTranslationLookup.Utilities
             }
         }
 
+        /// <summary>
+        /// Logs error details to the output window.
+        /// </summary>
+        /// <param name="context">The operation context.</param>
+        /// <param name="exception">The exception, if any.</param>
+        /// <param name="userMessage">The user-friendly message.</param>
+        /// <param name="suggestion">The suggested resolution.</param>
+        /// <remarks>
+        /// Logs include a formatted header, user message, suggestion, exception type and message,
+        /// inner exception details, and full stack trace. The format is designed for easy reading
+        /// and debugging.
+        /// </remarks>
         private static void LogDetailedError(string context, Exception exception, string userMessage, string suggestion)
         {
             StringBuilder logMessage = StringBuilderCache.Get();
@@ -262,7 +318,15 @@ namespace CSVTranslationLookup.Utilities
             Logger.Log(logMessage.GetStringAndRecycle());
         }
 
-
+        /// <summary>
+        /// Updates the Visual Studio status bar with an error message.
+        /// </summary>
+        /// <param name="message">The message to display.</param>
+        /// <param name="severity">The severity level, which is prepended to the message.</param>
+        /// <remarks>
+        /// Messages longer than 100 characters are truncated with ellipsis to fit the status bar.
+        /// The severity level is displayed as a prefix (e.g., "Error: ...").
+        /// </remarks>
         private static async Task UpdateStatusBarAsync(string message, ErrorSeverity severity)
         {
             string prefix = severity.ToString() + " ";
@@ -278,6 +342,18 @@ namespace CSVTranslationLookup.Utilities
 
         }
 
+        /// <summary>
+        /// Displays an error dialog to the user with formatted message and suggestions.
+        /// </summary>
+        /// <param name="userMessage">The main error message.</param>
+        /// <param name="suggestion">The suggested resolution.</param>
+        /// <param name="context">The operation context.</param>
+        /// <param name="exception">The exception, if any.</param>
+        /// <param name="severity">The severity level, which determines the dialog title and icon.</param>
+        /// <remarks>
+        /// The dialog includes the user message, suggestion, and instructions for viewing detailed
+        /// error information in the output window. Icon and title are chosen based on severity level.
+        /// </remarks>
         private static void ShowErrorDialog(string userMessage, string suggestion, string context, Exception exception, ErrorSeverity severity)
         {
             StringBuilder messageBuilder = StringBuilderCache.Get();
@@ -291,7 +367,7 @@ namespace CSVTranslationLookup.Utilities
                 messageBuilder.AppendLine();
             }
 
-            messageBuilder.AppendLine("Check the Ouptut window for detailed error information:");
+            messageBuilder.AppendLine("Check the Output window for detailed error information:");
             messageBuilder.AppendLine("View -> Output -> Select 'CSV Translation Lookup");
 
             string title;
@@ -328,12 +404,17 @@ namespace CSVTranslationLookup.Utilities
         }
 
         /// <summary>
-        /// Wraps an operation with error handling.
+        /// Wraps an operation with automatic error handling.
         /// </summary>
         /// <param name="context">Description of the operation.</param>
         /// <param name="operation">The operation to execute.</param>
-        /// <param name="onError">Optional callback when error occurs.</param>
-        /// <returns>true if operation succeeded, false if error occured.</returns>
+        /// <param name="onError">Optional callback invoked when an error occurs, receiving the exception.</param>
+        /// <returns><see langword="true"/> if the operation succeeded; <see langword="false"/> if an error occurred.</returns>
+        /// <remarks>
+        /// If an exception occurs, it is automatically handled via <see cref="HandleAsync(string, Exception, string, string, ErrorSeverity, bool)"/>,
+        /// which logs the error, updates the status bar, and displays a dialog. The onError callback is invoked
+        /// after standard error handling completes.
+        /// </remarks>
         public static async Task<bool> TryExecuteAsync(string context, Action operation, Action<Exception> onError = null)
         {
             try
@@ -350,14 +431,19 @@ namespace CSVTranslationLookup.Utilities
         }
 
         /// <summary>
-        /// Wraps an operation with error handling and returns a result.
+        /// Wraps an operation with automatic error handling and returns a result.
         /// </summary>
         /// <typeparam name="T">The result type.</typeparam>
         /// <param name="context">Description of the operation.</param>
         /// <param name="operation">The operation to execute.</param>
-        /// <param name="defaultvalue">Default value to return on error.</param>
-        /// <param name="onError">Optional callback when error occurs.</param>
-        /// <returns>The operation rsult, or default value on error.</returns>
+        /// <param name="defaultvalue">Default value to return if an error occurs. Defaults to <see langword="default"/>(<typeparamref name="T"/>).</param>
+        /// <param name="onError">Optional callback invoked when an error occurs, receiving the exception.</param>
+        /// <returns>The operation result, or <paramref name="defaultvalue"/> if an error occurred.</returns>
+        /// <remarks>
+        /// If an exception occurs, it is automatically handled via <see cref="HandleAsync(string, Exception, string, string, ErrorSeverity, bool)"/>,
+        /// which logs the error, updates the status bar, and displays a dialog. The onError callback is invoked
+        /// after standard error handling completes, and the default value is returned.
+        /// </remarks>
         public static async Task<T> TryExecuteAsync<T>(string context, Func<T> operation, T defaultvalue = default, Action<Exception> onError = null)
         {
             try

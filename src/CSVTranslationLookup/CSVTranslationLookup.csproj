@@ -47,9 +47,6 @@
   <ItemGroup>
     <Compile Include="Providers\KeywordAsyncInfoSourceProvider.cs" />
     <Compile Include="Services\CSVTranslationLookupService.cs" />
-    <Compile Include="CSV\CSVItem.cs" />
-    <Compile Include="CSV\CSVProcessor.cs" />
-    <Compile Include="CSV\CSVProcessedEventArgs.cs" />
     <Compile Include="ConfigurationFileListener.cs" />
     <Compile Include="Helpers\SolutionHelpers.cs" />
     <Compile Include="Logger.cs" />

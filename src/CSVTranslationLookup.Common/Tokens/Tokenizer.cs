@@ -9,10 +9,44 @@ using CSVTranslationLookup.Common.Text;
 namespace CSVTranslationLookup.Common.Tokens
 {
     /// <summary>
-    /// Provides methods for tokenizing a given string based on RFC4180 CSV specifications.
+    /// Provides methods for tokenizing strings based on RFC4180 CSV specifications.
     /// </summary>
+    /// <remarks>
+    /// Implements RFC4180 CSV parsing with support for:
+    /// <list type="bullet">
+    /// <item>Quoted fields containing delimiters and newlines</item>
+    /// <item>Escaped quotes (two consecutive quote characters)</item>
+    /// <item>Leading and trailing whitespace handling</item>
+    /// <item>Empty fields</item>
+    /// <item>Custom delimiters and quote characters</item>
+    /// </list>
+    /// Each token includes metadata about its source file and line number for diagnostics.
+    /// </remarks>
     public static class Tokenizer
     {
+        /// <summary>
+        /// Tokenizes a CSV row string into an array of tokens.
+        /// </summary>
+        /// <param name="input">The CSV row string to tokenize.</param>
+        /// <param name="fileName">The absolute path to the source file for metadata.</param>
+        /// <param name="lineNumber">The line number in the source file for metadata.</param>
+        /// <param name="delimiter">The character that represents a field delimiter. Defaults to <c>,</c> (comma).</param>
+        /// <param name="quote">The character that represents the start and end of a quoted field. Defaults to <c>"</c> (double quote).</param>
+        /// <returns>
+        /// An array of <see cref="Token"/> instances representing the fields in the CSV row.
+        /// Each token includes file name and line number metadata.
+        /// </returns>
+        /// <remarks>
+        /// The tokenizer handles several cases:
+        /// <list type="bullet">
+        /// <item>Empty input: Returns a single EndOfRecord token</item>
+        /// <item>Empty fields (consecutive delimiters): Creates tokens with empty string content</item>
+        /// <item>Quoted fields: Removes surrounding quotes and unescaped doubled quotes</item>
+        /// <item>Unquoted fields: Trims leading and trailing whitespace</item>
+        /// <item>Trailing delimiter: Adds an empty EndOfRecord token</item>
+        /// </list>
+        /// The last token in each row is marked with <see cref="TokenType.EndOfRecord"/>.
+        /// </remarks>
         public static Token[] Tokenize(string input, string fileName, int lineNumber, char delimiter = ',', char quote = '"')
         {
             if (string.IsNullOrEmpty(input))
@@ -27,24 +61,24 @@ namespace CSVTranslationLookup.Common.Tokens
 
             while (position < length)
             {
-                // Skip leading whitespace
+                // Skip leading whitespace (spaces and tabs, not newlines)
                 position = SkipWhitespace(input, position, length, delimiter);
 
                 if (position >= length)
                 {
-                    // End of input
+                    // Reached end of input
                     tokens.Add(new Token(TokenType.EndOfRecord, string.Empty) { FileName = fileName, LineNumber = lineNumber });
                     break;
                 }
 
                 char currentChar = input[position];
 
-                // Check for delimiter (empty field)
+                // Check for delimiter (indicates empty field)
                 if (currentChar == delimiter)
                 {
                     tokens.Add(new Token(TokenType.Token, string.Empty) { FileName = fileName, LineNumber = lineNumber });
 
-                    // Skip delimiter
+                    // Skip delimiter and continue to next field
                     position++;
                     continue;
                 }
@@ -54,17 +88,19 @@ namespace CSVTranslationLookup.Common.Tokens
                 {
                     string value = ReadQuotedField(input, ref position, length, quote);
 
-                    // Skip trailing whitespace
+                    // Skip trailing whitespace after closing quote
                     position = SkipWhitespace(input, position, length, delimiter);
 
-                    // Determine token type
+                    // Determine token type based on what follows
                     if (position >= length)
                     {
+                        // End of row
                         tokens.Add(new Token(TokenType.EndOfRecord, value) { FileName = fileName, LineNumber = lineNumber });
                         break;
                     }
                     else if (position < length && input[position] == delimiter)
                     {
+                        // More fields follow
                         tokens.Add(new Token(TokenType.Token, value) { FileName = fileName, LineNumber = lineNumber });
 
                         // Skip delimiter
@@ -72,6 +108,7 @@ namespace CSVTranslationLookup.Common.Tokens
                     }
                     else
                     {
+                        // Malformed (no delimiter after quoted field), treat as regular token
                         tokens.Add(new Token(TokenType.Token, value) { FileName = fileName, LineNumber = lineNumber });
                     }
                     continue;
@@ -83,14 +120,16 @@ namespace CSVTranslationLookup.Common.Tokens
                 // Skip trailing whitespace
                 position = SkipWhitespace(input, position, length, delimiter);
 
-                // Determine token type
+                // Determine token type based on what follows
                 if (position >= length)
                 {
+                    // End of row
                     tokens.Add(new Token(TokenType.EndOfRecord, unquotedvalue) { FileName = fileName, LineNumber = lineNumber });
                     break;
                 }
                 else if (position < length && input[position] == delimiter)
                 {
+                    // More fields follow
                     tokens.Add(new Token(TokenType.Token, unquotedvalue) { FileName = fileName, LineNumber = lineNumber });
 
                     // Skip delimiter
@@ -98,11 +137,12 @@ namespace CSVTranslationLookup.Common.Tokens
                 }
                 else
                 {
+                    // Malformed (unexpected characters), treat as regular token
                     tokens.Add(new Token(TokenType.Token, unquotedvalue) { FileName = fileName, LineNumber = lineNumber });
                 }
             }
 
-            // If we ended on a delimiter, add empty EndOfRecord token
+            // If row ended on a delimiter, add empty EndOfRecord token
             if (position > 0 && position <= length && input[position - 1] == delimiter)
             {
                 tokens.Add(new Token(TokenType.EndOfRecord, string.Empty) { FileName = fileName, LineNumber = lineNumber });
@@ -112,18 +152,24 @@ namespace CSVTranslationLookup.Common.Tokens
         }
 
         /// <summary>
-        /// Skips whitespace characters (space and tab only, not newlines).
+        /// Skips whitespace characters from the current position.
         /// </summary>
         /// <param name="input">The input string.</param>
-        /// <param name="position">The current position.</param>
+        /// <param name="position">The current position in the input string.</param>
         /// <param name="length">The length of the input string.</param>
         /// <param name="delimiter">The delimiter character to stop at.</param>
-        /// <returns>The new position after skipping whitespace.</returns>
+        /// <returns>The new position after skipping all whitespace.</returns>
+        /// <remarks>
+        /// Only skips spaces and tabs, not newlines. Stops when encountering a delimiter,
+        /// non-whitespace character, or end of string.
+        /// </remarks>
         private static int SkipWhitespace(string input, int position, int length, char delimiter)
         {
             while (position < length)
             {
                 char c = input[position];
+
+                // Only skip spaces and tabs (not newlines), and stop at delimiters
                 if (c != delimiter && (c == ' ' || c == '\t'))
                 {
                     position++;
@@ -141,10 +187,17 @@ namespace CSVTranslationLookup.Common.Tokens
         /// Reads a quoted field from the input string.
         /// </summary>
         /// <param name="input">The input string.</param>
-        /// <param name="position">The current position (will be updated)</param>
+        /// <param name="position">The current position (will be updated to position after closing quote).</param>
         /// <param name="length">The length of the input string.</param>
         /// <param name="quote">The quote character.</param>
-        /// <returns>The content of the quoted field (without surrounding quotes).</returns>
+        /// <returns>
+        /// The content of the quoted field with surrounding quotes removed and escaped quotes (doubled quotes) unescaped.
+        /// </returns>
+        /// <remarks>
+        /// Handles RFC4180 quote escaping: two consecutive quote characters within a quoted field
+        /// represent a single quote in the output. For example, the field <c>"He said ""Hello"""</c>
+        /// returns <c>He said "Hello"</c>.
+        /// </remarks>
         private static string ReadQuotedField(string input, ref int position, int length, char quote)
         {
             // Skip opening quote
@@ -178,6 +231,7 @@ namespace CSVTranslationLookup.Common.Tokens
                 }
                 else
                 {
+                    // Regular character within quoted field
                     buffer.Append(c);
                     position++;
                 }
@@ -185,15 +239,20 @@ namespace CSVTranslationLookup.Common.Tokens
 
             return buffer.GetStringAndRecycle();
         }
-
         /// <summary>
-        /// Reads an unquoted field form the input string.
+        /// Reads an unquoted field from the input string.
         /// </summary>
         /// <param name="input">The input string.</param>
-        /// <param name="position">The currnet position (will be updated).</param>
+        /// <param name="position">The current position (will be updated to position after field).</param>
         /// <param name="length">The length of the input string.</param>
-        /// <param name="delimiter">The delimiter character.</param>
-        /// <returns>The content of the unquoted field (trimmed).</returns>
+        /// <param name="delimiter">The delimiter character that marks the end of the field.</param>
+        /// <returns>
+        /// The content of the unquoted field with leading and trailing whitespace removed.
+        /// </returns>
+        /// <remarks>
+        /// Reads characters until a delimiter or end of string is encountered, then trims
+        /// the result. Returns an empty string for zero-length fields.
+        /// </remarks>
         private static string ReadUnquotedField(string input, ref int position, int length, char delimiter)
         {
             int startPosition = position;
@@ -204,7 +263,7 @@ namespace CSVTranslationLookup.Common.Tokens
                 position++;
             }
 
-            // Extract substring and trim
+            // Extract substring and trim whitespace
             int fieldLength = position - startPosition;
             if (fieldLength == 0)
             {

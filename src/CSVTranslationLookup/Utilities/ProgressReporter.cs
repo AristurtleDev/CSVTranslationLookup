@@ -10,13 +10,41 @@ namespace CSVTranslationLookup.Utilities
     /// <summary>
     /// Provides progress reporting for long-running operations.
     /// </summary>
+    /// <remarks>
+    /// Tracks operation progress and reports it to both the output window logger and the
+    /// Visual Studio status bar. Automatically completes the operation when disposed if not
+    /// already complete. Use within a using statement for automatic cleanup.
+    /// </remarks>
     internal class ProgressReporter : IDisposable
     {
+        /// <summary>
+        /// The name of the operation being tracked.
+        /// </summary>
         private readonly string _operationName;
+
+        /// <summary>
+        /// The total number of items to process.
+        /// </summary>
         private readonly int _totalItems;
+
+        /// <summary>
+        /// Measures the elapsed time of the operation.
+        /// </summary>
         private readonly Stopwatch _stopWatch;
+
+        /// <summary>
+        /// Indicates whether to log individual progress updates to the output window.
+        /// </summary>
         private readonly bool _logProgress;
+
+        /// <summary>
+        /// The number of items that have been processed so far.
+        /// </summary>
         private int _completedItems;
+
+        /// <summary>
+        /// Tracks whether this instance has been disposed.
+        /// </summary>
         private bool _isDisposed;
 
         /// <summary>
@@ -36,7 +64,7 @@ namespace CSVTranslationLookup.Utilities
         }
 
         /// <summary>
-        /// Gets teh number of completed items.
+        /// Gets the number of completed items.
         /// </summary>
         public int CompletedItems
         {
@@ -58,7 +86,7 @@ namespace CSVTranslationLookup.Utilities
         }
 
         /// <summary>
-        /// Gets the elapsed time.
+        /// Gets the elapsed time since the operation started.
         /// </summary>
         public TimeSpan ElapsedTime
         {
@@ -84,7 +112,10 @@ namespace CSVTranslationLookup.Utilities
         /// </summary>
         /// <param name="operationName">The name of the operation being performed.</param>
         /// <param name="totalItems">The total number of items to process.</param>
-        /// <param name="logProgress">Whether to log progress to the output window.</param>
+        /// <param name="logProgress">Whether to log individual progress updates to the output window. Default is <see langword="false"/>.</param>
+        /// <remarks>
+        /// The stopwatch starts immediately and initial progress is reported to the status bar.
+        /// </remarks>
         public ProgressReporter(string operationName, int totalItems, bool logProgress = false)
         {
             _operationName = operationName;
@@ -100,7 +131,12 @@ namespace CSVTranslationLookup.Utilities
         /// <summary>
         /// Reports progress for a single item.
         /// </summary>
-        /// <param name="itemName">Optionalname of the item being processed.</param>
+        /// <param name="itemName">Optional name of the item being processed. If provided and logging is enabled, the item name is logged.</param>
+        /// <remarks>
+        /// Increments the completed item count and updates both the logger and status bar.
+        /// If <paramref name="itemName"/> is provided and logging is enabled, a detailed progress
+        /// entry is written to the output window.
+        /// </remarks>
         public void ReportProgress(string itemName = null)
         {
             _completedItems++;
@@ -117,6 +153,9 @@ namespace CSVTranslationLookup.Utilities
         /// Reports progress for multiple items at once.
         /// </summary>
         /// <param name="count">The number of items completed.</param>
+        /// <remarks>
+        /// Use this overload when processing items in batches to avoid excessive status bar updates.
+        /// </remarks>
         public void ReportProgress(int count)
         {
             _completedItems += count;
@@ -124,8 +163,13 @@ namespace CSVTranslationLookup.Utilities
         }
 
         /// <summary>
-        /// Reports completion of operation.
+        /// Reports completion of the operation.
         /// </summary>
+        /// <remarks>
+        /// Stops the stopwatch, logs a completion message with elapsed time, updates the status bar,
+        /// and clears the logger progress indicator. This method is called automatically by
+        /// <see cref="Dispose"/> if not already complete.
+        /// </remarks>
         public void Complete()
         {
             _stopWatch.Stop();
@@ -137,6 +181,13 @@ namespace CSVTranslationLookup.Utilities
             Logger.LogProgress(false);
         }
 
+        /// <summary>
+        /// Reports cancellation of the operation.
+        /// </summary>
+        /// <remarks>
+        /// Stops the stopwatch, logs a cancellation message showing partial progress,
+        /// updates the status bar, and clears the logger progress indicator.
+        /// </remarks>
         public void Cancel()
         {
             _stopWatch.Stop();
@@ -148,6 +199,13 @@ namespace CSVTranslationLookup.Utilities
             Logger.LogProgress(false);
         }
 
+        /// <summary>
+        /// Updates the progress display in both the logger and status bar.
+        /// </summary>
+        /// <remarks>
+        /// When <see cref="TotalItems"/> is greater than 0, displays progress as a fraction and percentage.
+        /// When <see cref="TotalItems"/> is 0, displays only the completed item count.
+        /// </remarks>
         private void UpdateProgress()
         {
             if (_totalItems > 0)
@@ -166,6 +224,13 @@ namespace CSVTranslationLookup.Utilities
             }
         }
 
+        /// <summary>
+        /// Formats the elapsed time in a human-readable format.
+        /// </summary>
+        /// <returns>
+        /// Formatted time string: milliseconds for &lt;1s, seconds with one decimal for &lt;1m,
+        /// or minutes and seconds for longer durations.
+        /// </returns>
         private string FormatElapsedTime()
         {
             var elapsed = _stopWatch.Elapsed;
@@ -184,7 +249,13 @@ namespace CSVTranslationLookup.Utilities
             }
         }
 
-        /// <inheritdoc/>
+        /// <summary>
+        /// Releases resources and completes the operation if not already complete.
+        /// </summary>
+        /// <remarks>
+        /// If the stopwatch is still running when disposed, <see cref="Complete"/> is called automatically.
+        /// This ensures progress indicators are cleared even if the operation wasn't explicitly completed.
+        /// </remarks>
         public void Dispose()
         {
             if (!_isDisposed)

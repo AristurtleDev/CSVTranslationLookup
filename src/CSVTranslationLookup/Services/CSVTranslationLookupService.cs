@@ -4,22 +4,26 @@
 
 using System;
 using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
-using System.Windows.Forms;
 using CSVTranslationLookup.Common.IO;
-using CSVTranslationLookup.Common.Text;
 using CSVTranslationLookup.Common.Tokens;
 using CSVTranslationLookup.Common.Utilities;
 using CSVTranslationLookup.Configuration;
 using CSVTranslationLookup.Utilities;
-using Microsoft.VisualStudio.Shell.Interop;
 
 namespace CSVTranslationLookup.Services
 {
+    /// <summary>
+    /// Manages CSV translation token lookups with file system monitoring and caching.
+    /// </summary>
+    /// <remarks>
+    /// This service watches a configured directory for CSV file changes and maintains an in-memory
+    /// dictionary of translation tokens.
+    /// </remarks>
     public sealed class CSVTranslationLookupService : IDisposable
     {
         // Wait time before processing a file change.
@@ -28,21 +32,62 @@ namespace CSVTranslationLookup.Services
         // Number of times to retry on file lock.
         private const int MaxRetryAttempts = 3;
 
-        // Base delay between retries (gets multiplied by attempt number for exponential backoff).
+        // Base delay between retries (gets multiplied by attempt number for exponential back off).
         private const int RetryDelayMilliseconds = 100;
 
         // Ignore duplicate events within this window.
         private const int DuplicateEventWindowMilliseconds = 50;
 
+        /// <summary>
+        /// Main token dictionary mapping translation keys to their resolved values.
+        /// </summary>
+        /// <remarks>
+        /// Initialized with concurrency level equal to processor count and initial capacity of 31
+        /// for performance.
+        /// </remarks>
         private readonly ConcurrentDictionary<string, Token> _tokens = new ConcurrentDictionary<string, Token>(Environment.ProcessorCount, 31);
+
+        /// <summary>
+        /// Tracks cancellation tokens for ongoing file change operations to enable debouncing.
+        /// </summary>
         private readonly ConcurrentDictionary<string, CancellationTokenSource> _fileChangeDebounce = new ConcurrentDictionary<string, CancellationTokenSource>();
+
+        /// <summary>
+        /// Records the last time a file system event was processed for each file path to filter duplicate events.
+        /// </summary>
         private readonly ConcurrentDictionary<string, DateTime> _lastEventTime = new ConcurrentDictionary<string, DateTime>();
+
+        /// <summary>
+        /// Caches resolved token lookups including fallback suffix resolution to avoid repeated searches.
+        /// </summary>
+        /// <remarks>
+        /// Maps original lookup keys to their resolved tokens.  Null values are cached to avoid repeatedly
+        /// searching for non-existent keys.
+        /// </remarks>
         private readonly ConcurrentDictionary<string, Token> _resolvedTokenCache = new ConcurrentDictionary<string, Token>();
+
+        /// <summary>
+        /// Monitors the configured directory for CSVfile changes.
+        /// </summary>
         private FileSystemWatcher _watcher;
+
+        /// <summary>
+        /// Tracks whether this instance has been disposed.
+        /// </summary>
         private bool _isDisposed;
 
+        /// <summary>
+        /// Gets the currently loaded configuration.
+        /// </summary>
         public static Config Config { get; private set; }
 
+        /// <summary>
+        /// Initializes the file system watcher if not already created.
+        /// </summary>
+        /// <remarks>
+        /// The watcher is configured to monitor CSV files for creating, modification, deletion, and rename events.
+        /// Events are not raised until explicitly enabled after configuration is loaded.
+        /// </remarks>
         private void EnsureWatcher()
         {
             if (_watcher != null)
@@ -63,9 +108,18 @@ namespace CSVTranslationLookup.Services
             _watcher.Renamed += CSVRenamed;
         }
 
-        /// <summary>Processes a configuration file and initializes the CSV translation lookup service.</summary>
+        /// <summary>
+        /// Processes a configuration file and initializes the CSV translation lookup service.
+        /// </summary>
         /// <param name="configFile">The path to the configuration file to process.</param>
-        /// <exception cref="ObjectDisposedException">Throw if this CSVTranslationLookupServerice has been disposed of.</exception>
+        /// <returns>The result of this asynchronous operation.</returns>
+        /// <exception cref="ObjectDisposedException">Thrown if this instance has been disposed of.</exception>
+        /// <remarks>
+        /// If a configuration has already been loaded and the specified file is the same,
+        /// the method returns early.  Only one configuration file is active at a time.
+        /// This method validates the configuration, loads all CSV files from the watch directory,
+        /// and enables file system monitoring.
+        /// </remarks>
         public async Task ProcessConfigAsync(string configFile)
         {
             if (_isDisposed)
@@ -74,7 +128,7 @@ namespace CSVTranslationLookup.Services
             }
 
             // If we have already loaded a configuration file previously either during the initialization of this
-            // extension or after one was created in a project, and this new configuration fiel is not hte same
+            // extension or after one was created in a project, and this new configuration file is not the same
             // file as the one we're already using, then we ignore.  Only use one configuration file.
             if (Config != null && PathHelper.ArePathsEqual(Config.FileName, configFile))
             {
@@ -133,25 +187,16 @@ namespace CSVTranslationLookup.Services
 
                 if (Config.Diagnostic)
                 {
-                    StringBuilder builder = StringBuilderCache.Get();
-                    builder.AppendLine("Configuration file loaded with the following values:");
-                    builder.Append("  ").Append(nameof(Config.WatchPath)).Append(": ").AppendLine(string.IsNullOrEmpty(Config.WatchPath) ? "(current directory)" : Config.WatchPath);
-                    builder.Append("  ").Append(nameof(Config.OpenWith)).Append(": ").AppendLine(string.IsNullOrEmpty(Config.OpenWith) ? "(default application)" : Config.OpenWith);
-                    builder.Append("  ").Append(nameof(Config.Arguments)).Append(": ").AppendLine(string.IsNullOrEmpty(Config.Arguments) ? "(none)" : Config.Arguments);
-
-                    if (Config.FallbackSuffixes != null && Config.FallbackSuffixes.Count > 0)
-                    {
-                        builder.Append("  ").Append(nameof(Config.FallbackSuffixes)).Append(": [").Append(string.Join(", ", Config.FallbackSuffixes)).AppendLine("]");
-                    }
-                    else
-                    {
-                        builder.Append("  ").Append(nameof(Config.FallbackSuffixes)).Append(": [ ]").AppendLine();
-                    }
-
-                    builder.Append("  ").Append(nameof(Config.Delimiter)).Append(": '").Append(Config.Delimiter).AppendLine("'");
-                    builder.Append("  ").Append(nameof(Config.Quote)).Append(": '").Append(Config.Quote).AppendLine("'");
-                    builder.Append("  ").Append(nameof(Config.Diagnostic)).Append(": ").AppendLine(Config.Diagnostic.ToString());
-                    Logger.Log(builder.GetStringAndRecycle());
+                    Logger.LogBatch(
+                        "Configuration file loaded with the following values:",
+                        $"  {nameof(Config.WatchPath)}: {Config.WatchPath ?? "(current directory)"}",
+                        $"  {nameof(Config.OpenWith)}: {Config.OpenWith ?? "(default application)"}",
+                        $"  {nameof(Config.Arguments)}: {Config.Arguments ?? "(none)"}",
+                        $"  {nameof(Config.FallbackSuffixes)}: [{string.Join(", ", Config.FallbackSuffixes ?? new List<string>())}]",
+                        $"  {nameof(Config.Delimiter)}: '{Config.Delimiter}'" +
+                        $"  {nameof(Config.Quote)}: '{Config.Quote}'",
+                        $"  {nameof(Config.Diagnostic)}: {Config.Diagnostic}"
+                    );
                 }
             }
             catch (Exception ex)
@@ -191,6 +236,7 @@ namespace CSVTranslationLookup.Services
                         showDialog: false
                     );
 
+                    // Enable watching even if no files exist yet, so new files can be detected.
                     _watcher.Path = dir.FullName;
                     _watcher.EnableRaisingEvents = true;
                     return;
@@ -258,28 +304,31 @@ namespace CSVTranslationLookup.Services
             }
         }
 
-        /// <summary>Attempts to retrieve a token by its key.</summary>
+        /// <summary>
+        /// Attempts to retrieve a token by its key.
+        /// </summary>
         /// <param name="key">The key to search for.</param>
         /// <param name="token">
-        /// When this method returns, contains the token associated with the specified key, if found; otherwise, null.
+        /// When this method returns, contains the token associated with the specified key, if found; otherwise, <see langword="null"/>.
         /// </param>
-        /// <returns>true if the token was foundn; otherwise, false.</returns>
+        /// <returns><see langword="true"/> if the token was found; otherwise, <see langword="false"/>.</returns>
         /// <remarks>
-        /// This method first checks a resolved token cache for quick lookups.  If not cached,
-        /// it searches the main token dictionary.  If not faound nd fallback suffixes are configured
+        /// This method first checks a resolved token cache for quick lookups. If not cached,
+        /// it searches the main token dictionary. If not found and fallback suffixes are configured,
         /// it tries each suffix in order until a match is found or all suffixes are exhausted.
-        ///
-        /// Both successful and failed lookups are cached to avoid repeated work.  The cache is
-        /// cleared when CSV viles are modified to ensure fresh lookups reflect file changes.
-        ///
-        /// Example: If key is "ABILITY_NAME" and fallback suffixes are ["_M", "_F"] then seearch order is:
-        ///
-        /// 1. Check cache for "ABILITY_NAME"
-        /// 2. Try "ABILITY_NAME" in token dictionary
-        /// 3. Try "ABILITY_NAME_M" in token dictionary
-        /// 4. Try "ABILITY_NAME_F" in token dictionary
-        /// 5. Cache result (or null) and return
+        /// Both successful and failed lookups are cached to avoid repeated work. The cache is
+        /// cleared when CSV files are modified to ensure fresh lookups reflect file changes.
         /// </remarks>
+        /// <example>
+        /// If key is "ABILITY_NAME" and fallback suffixes are ["_M", "_F"], the search order is:
+        /// <list type="number">
+        /// <item>Check cache for "ABILITY_NAME"</item>
+        /// <item>Try "ABILITY_NAME" in token dictionary</item>
+        /// <item>Try "ABILITY_NAME_M" in token dictionary</item>
+        /// <item>Try "ABILITY_NAME_F" in token dictionary</item>
+        /// <item>Cache result (or null) and return</item>
+        /// </list>
+        /// </example>
         public bool TryGetToken(string key, out Token token)
         {
             if (_isDisposed)
@@ -322,12 +371,22 @@ namespace CSVTranslationLookup.Services
                 }
             }
 
-            // Cache negative result to avoid repeated failed looups
+            // Cache negative result to avoid repeated failed lookups
             _resolvedTokenCache.TryAdd(key, null);
             token = null;
             return false;
         }
 
+        /// <summary>
+        /// Retries a file operation with exponential back off on lock or access errors.
+        /// </summary>
+        /// <param name="operation">The file operation to execute.</param>
+        /// <param name="cancellationToken">Token to cancel the retry attempts.</param>
+        /// <remarks>
+        /// Retries up to <see cref="MaxRetryAttempts"/> times with increasing delays.
+        /// The delay increases linearly: attempt 1 waits <see cref="RetryDelayMilliseconds"/>,
+        /// attempt 2 waits 2× that amount, and so on.
+        /// </remarks>
         private async Task RetryFileOperationsAsync(Action operation, CancellationToken cancellationToken)
         {
             int attempt = 0;
@@ -353,6 +412,16 @@ namespace CSVTranslationLookup.Services
             }
         }
 
+        /// <summary>
+        /// Processes a CSV file change with debouncing and retry logic.
+        /// </summary>
+        /// <param name="filePath">The path to the changed CSV file.</param>
+        /// <param name="removeOldPath">Optional path of a renamed file to remove before processing the new file.</param>
+        /// <remarks>
+        /// This method debounces rapid file changes by waiting <see cref="DebounceDelayMilliseconds"/>
+        /// before processing. If another change occurs during the wait, the previous operation is cancelled.
+        /// File operations are retried on lock conflicts using exponential back off.
+        /// </remarks>
         private async void ProcessFileChangeAsync(string filePath, string removeOldPath = null)
         {
             if (_isDisposed)
@@ -362,7 +431,7 @@ namespace CSVTranslationLookup.Services
 
             string fileName = PathHelper.SafeGetFileName(filePath);
 
-            // Cancel any existing operations fo rthis file
+            // Cancel any existing operations for this file
             if (_fileChangeDebounce.TryGetValue(filePath, out var existingCts))
             {
                 existingCts.Cancel();
@@ -379,7 +448,7 @@ namespace CSVTranslationLookup.Services
 
                 await CSVTranslationLookupPackage.StatusTextAsync($"Reloading {fileName}...");
 
-                // Perform the file processsing with retry logic
+                // Perform the file processing with retry logic
                 await RetryFileOperationsAsync(() =>
                 {
                     if (!string.IsNullOrEmpty(removeOldPath))
@@ -396,7 +465,7 @@ namespace CSVTranslationLookup.Services
                     }
                 }, cts.Token);
 
-                await CSVTranslationLookupPackage.StatusTextAsync($"Reloaed {fileName}");
+                await CSVTranslationLookupPackage.StatusTextAsync($"Reloaded {fileName}");
 
                 if (Config.Diagnostic)
                 {
@@ -411,17 +480,17 @@ namespace CSVTranslationLookup.Services
                     Logger.Log($"File change processing cancelled for: {filePath}");
                 }
             }
-            catch(IOException)
+            catch (IOException)
             {
                 // File might be locked
-                if(Config.Diagnostic)
+                if (Config.Diagnostic)
                 {
-                    Logger.Log($"File templorarily locked, will retry on next change: {fileName}");
+                    Logger.Log($"File temporarily locked, will retry on next change: {fileName}");
                 }
 
                 await ErrorHandler.ShowWarningAsync(
-                    message: $"Could not reloat {fileName}; file may be locked.",
-                    suggestion: "The file will be reloaded automatically when it beocmes avaialble.",
+                    message: $"Could not reload {fileName}; file may be locked.",
+                    suggestion: "The file will be reloaded automatically when it becomes available.",
                     showDialog: false
                 );
             }
@@ -441,6 +510,18 @@ namespace CSVTranslationLookup.Services
             }
         }
 
+        /// <summary>
+        /// Determines if a file system event is a duplicate within the configured time window.
+        /// </summary>
+        /// <param name="filePath">The file path to check.</param>
+        /// <returns>
+        /// <see langword="true"/> if this event occurred within <see cref="DuplicateEventWindowMilliseconds"/>
+        /// of the last event for the same file; otherwise, <see langword="false"/>.
+        /// </returns>
+        /// <remarks>
+        /// Many text editors trigger multiple file system events for a single save operation.
+        /// This method filters out duplicates to avoid unnecessary reprocessing.
+        /// </remarks>
         private bool IsDuplicateEvent(string filePath)
         {
             DateTime now = DateTime.UtcNow;
@@ -453,21 +534,22 @@ namespace CSVTranslationLookup.Services
                     // This is likely a duplicated event
                     if (Config.Diagnostic)
                     {
-                        Logger.Log($"Ignoring duplicate event for {filePath} (oly {timeSinceLastEvent:F0}ms since last event");
+                        Logger.Log($"Ignoring duplicate event for {filePath} (only {timeSinceLastEvent:F0}ms since last event");
                     }
                     return true;
                 }
             }
 
-            // Updat elast event time
+            // Update last event time
             _lastEventTime[filePath] = now;
             return false;
         }
 
         /// <summary>
-        /// Triggered when a watched CSV file is deleted.  All token keywords associated with that file are removed
-        /// from the items collection.
+        /// Handles the deletion of a watched CSV file by removing all associated tokens.
         /// </summary>
+        /// <param name="sender">The source of the event.</param>
+        /// <param name="e">File system event data.</param>
         private void CSVDeleted(object sender, FileSystemEventArgs e)
         {
             if (_isDisposed)
@@ -491,9 +573,10 @@ namespace CSVTranslationLookup.Services
         }
 
         /// <summary>
-        /// Triggered when a csv file in the watched directory is changed.  All token keywords associated with that
-        /// file are first removed and then the new tokens added back.
+        /// Handles changes to a watched CSV file by removing old tokens and reloading from the file.
         /// </summary>
+        /// <param name="sender">The source of the event.</param>
+        /// <param name="e">File system event data.</param>
         private void CSVChanged(object sender, FileSystemEventArgs e)
         {
             if (_isDisposed || !File.Exists(e.FullPath) || !PathHelper.HasExtension(e.FullPath, ".csv"))
@@ -515,9 +598,10 @@ namespace CSVTranslationLookup.Services
         }
 
         /// <summary>
-        /// Triggered when a csv file in the watched directory is created.  All token keywords in the CSV file are
-        /// added to the internal token collection.
+        /// Handles creation of a new CSV file in the watched directory by loading its tokens.
         /// </summary>
+        /// <param name="sender">The source of the event.</param>
+        /// <param name="e">File system event data.</param>
         private void CSVCreated(object sender, FileSystemEventArgs e)
         {
             if (_isDisposed || !File.Exists(e.FullPath) || !PathHelper.HasExtension(e.FullPath, ".csv"))
@@ -533,9 +617,10 @@ namespace CSVTranslationLookup.Services
         }
 
         /// <summary>
-        /// Triggered when a csv file in the watched directory is renamed.  All token keywors from the old filepath
-        /// are removed and tokens from the new filepath are added.
+        /// Handles renaming of a watched CSV file by removing tokens from the old path and loading from the new path.
         /// </summary>
+        /// <param name="sender">The source of the event.</param>
+        /// <param name="e">Renamed event data containing both old and new file paths.</param>
         private void CSVRenamed(object sender, RenamedEventArgs e)
         {
             if (_isDisposed || !File.Exists(e.FullPath) || !PathHelper.HasExtension(e.FullPath, ".csv"))
@@ -551,6 +636,14 @@ namespace CSVTranslationLookup.Services
             ProcessFileChangeAsync(e.FullPath, e.OldFullPath);
         }
 
+        /// <summary>
+        /// Adds tokens from processed CSV rows to the internal dictionary.
+        /// </summary>
+        /// <param name="rows">The tokenized rows to process.</param>
+        /// <remarks>
+        /// Rows must have at least two tokens (key and value). Rows with empty keys, header rows
+        /// (key equals "key"), and comment rows (key-only with no value) are skipped.
+        /// </remarks>
         private void AddTokens(ParallelQuery<TokenizedRow> rows)
         {
             foreach (TokenizedRow row in rows)
@@ -591,6 +684,13 @@ namespace CSVTranslationLookup.Services
             }
         }
 
+        /// <summary>
+        /// Removes all tokens associated with a specific CSV file.
+        /// </summary>
+        /// <param name="fileName">The file path whose tokens should be removed.</param>
+        /// <remarks>
+        /// Clears tokens from both the main dictionary and the resolved token cache.
+        /// </remarks>
         private void RemoveTokensByFileName(string fileName)
         {
             ParallelQuery<string> query = _tokens.AsParallel()
@@ -606,12 +706,15 @@ namespace CSVTranslationLookup.Services
                 count++;
             }
 
-            if(Config?.Diagnostic ?? false)
+            if (Config?.Diagnostic ?? false)
             {
                 Logger.Log($"Cleared {count} tokens from cache for file: {PathHelper.SafeGetFileName(fileName)}");
             }
         }
 
+        /// <summary>
+        /// Releases all resources used by the service.
+        /// </summary>s
         public void Dispose()
         {
             if (_isDisposed)
