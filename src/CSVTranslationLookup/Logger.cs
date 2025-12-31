@@ -4,9 +4,8 @@
 
 using System;
 using System.Diagnostics;
-using System.Runtime.Remoting.Messaging;
 using System.Text;
-using System.Windows.Markup;
+using System.Threading.Tasks;
 using CSVTranslationLookup.Common.Text;
 using Microsoft.VisualStudio.Shell;
 using Microsoft.VisualStudio.Shell.Interop;
@@ -15,27 +14,26 @@ namespace CSVTranslationLookup
 {
     internal static class Logger
     {
-        private static readonly object s_lock = new object();
         private static IVsOutputWindowPane s_pane;
+        private static IVsStatusbar s_statusBar;
         private static IServiceProvider s_provider;
         private static string s_name;
-        private static bool s_initialzed;
+        private static bool s_initialized;
         private static bool s_paneCreationFailed;
+        private static bool s_statusBarCreationFailed;
 
-        public static void Initialize(Microsoft.VisualStudio.Shell.Package provider, string name)
+        public static async Task InitializeAsync(Microsoft.VisualStudio.Shell.Package provider, string name)
         {
-            lock(s_lock)
-            {
-                s_provider = provider;
-                s_name = name;
-                s_initialzed = true;
-                s_paneCreationFailed = false;
-            }
+            s_provider = provider;
+            s_name = name;
+            s_initialized = true;
+            s_paneCreationFailed = false;
+            s_statusBarCreationFailed = false;
 
-            Log("Logger Initialized");
+            await LogAsync("Logger Initialized");
         }
 
-        public static void Log(string message)
+        public static async Task LogAsync(string message)
         {
             if (string.IsNullOrEmpty(message))
             {
@@ -44,68 +42,62 @@ namespace CSVTranslationLookup
 
             try
             {
-                ThreadHelper.ThrowIfNotOnUIThread();
+                await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
 
-                lock (s_lock)
+                if (EnsurePaneLocked())
                 {
-                    if (EnsurePaneLocked())
-                    {
-                        string timestamp = DateTime.Now.ToString("MM/dd/yyyyy h:mm:sstt");
-                        string formattedMessage = $"{timestamp}: {message}{Environment.NewLine}";
-                        s_pane.OutputString(formattedMessage);
-                    }
+                    string timestamp = DateTime.Now.ToString("MM/dd/yyyy h:mm:ss tt");
+                    string formattedMessage = $"{timestamp}: {message}{Environment.NewLine}";
+                    s_pane.OutputString(formattedMessage);
                 }
             }
-            catch(Exception ex)
+            catch (Exception ex)
             {
-                // Last resor: Write to debug output if output pane fails
+                // Last resort: Write to debug output if output pane fails
                 Debug.WriteLine($"Logger failed to write message: {ex.Message}");
                 Debug.WriteLine($"Original message: {message}");
             }
         }
 
-        public static void LogBatch(params string[] messages)
+        public static async Task LogBatchAsync(params string[] messages)
         {
-            if(messages == null || messages.Length == 0)
+            if (messages == null || messages.Length == 0)
             {
                 return;
             }
 
             try
             {
-                ThreadHelper.ThrowIfNotOnUIThread();
+                await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
 
-                lock(s_lock)
+                if (EnsurePaneLocked())
                 {
-                    if(EnsurePaneLocked())
+                    StringBuilder batch = StringBuilderCache.Get();
+                    string timestamp = DateTime.Now.ToString("MM/dd/yyyy h:mm:ss tt");
+
+                    foreach (string message in messages)
                     {
-                        StringBuilder batch = StringBuilderCache.Get();
-                        string timestamp = DateTime.Now.ToString("MM/dd/yyyy h:mm:sstt");
-
-                        foreach(string message in messages)
+                        if (!string.IsNullOrEmpty(message))
                         {
-                            if(!string.IsNullOrEmpty(message))
-                            {
-                                batch.Append(timestamp).Append(": ").AppendLine(message);
-                            }
+                            batch.Append(timestamp).Append(": ").AppendLine(message);
                         }
+                    }
 
-                        if(batch.Length > 0)
-                        {
-                            s_pane.OutputString(batch.GetStringAndRecycle());
-                        }
+                    if (batch.Length > 0)
+                    {
+                        s_pane.OutputString(batch.GetStringAndRecycle());
                     }
                 }
             }
-            catch(Exception ex)
+            catch (Exception ex)
             {
                 Debug.WriteLine($"Logger failed to write batch: {ex.Message}");
             }
         }
 
-        public static void Log(Exception ex)
+        public static async Task LogAsync(Exception ex)
         {
-            if (ex == null)
+            if (ex is null)
             {
                 return;
             }
@@ -114,23 +106,23 @@ namespace CSVTranslationLookup
             sb.Append("Exception: ").AppendLine(ex.GetType().FullName);
             sb.Append("Message: ").AppendLine(ex.Message);
 
-            if(ex.InnerException != null)
+            if (ex.InnerException != null)
             {
                 sb.Append("Inner Exception: ").AppendLine(ex.InnerException.GetType().FullName);
                 sb.Append("Inner Message: ").AppendLine(ex.InnerException.Message);
             }
 
             sb.AppendLine("Stack Trace:");
-            sb.AppendLine(ex.StackTrace ?? "(no stack trace avaialble");
+            sb.AppendLine(ex.StackTrace ?? "(no stack trace available)");
 
-            Log(sb.GetStringAndRecycle());
+            await LogAsync(sb.GetStringAndRecycle());
         }
 
-        public static void Log(string message, Exception ex)
+        public static async Task LogAsync(string message, Exception ex)
         {
-            if(ex == null)
+            if (ex is null)
             {
-                Log(message);
+                await LogAsync(message);
                 return;
             }
 
@@ -146,76 +138,75 @@ namespace CSVTranslationLookup
             }
 
             sb.AppendLine("Stack Trace:");
-            sb.AppendLine(ex.StackTrace ?? "(no stack trace avaialble");
+            sb.AppendLine(ex.StackTrace ?? "(no stack trace available)");
 
-            Log(sb.GetStringAndRecycle());
+            await LogAsync(sb.GetStringAndRecycle());
         }
 
-        public static void LogProgress(bool inProgress, string label = "", int completed = 0, int total = 0)
+        public static async Task LogProgressAsync(bool inProgress, string label = "", int completed = 0, int total = 0)
         {
-            if (CSVTranslationLookupPackage.DTE == null)
-            {
-                return;
-            }
-
             try
             {
-                ThreadHelper.ThrowIfNotOnUIThread();
+                await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
+
+                if (!EnsureStatusBarLocked())
+                {
+                    return;
+                }
 
                 if (!inProgress)
                 {
-                    CSVTranslationLookupPackage.DTE.StatusBar.Progress(false);
+                    // Clear progress indicator
+                    uint cookie = 0;
+                    s_statusBar.Progress(ref cookie, 0, "", 0, 0);
                 }
                 else
                 {
-                    CSVTranslationLookupPackage.DTE.StatusBar.Progress(inProgress, label, completed, total);
+                    // Show progress with label
+                    uint cookie = 0;
+                    s_statusBar.Progress(ref cookie, 1, label, (uint)completed, (uint)total);
+
                     if (!string.IsNullOrEmpty(label))
                     {
-                        Log(label);
+                        await LogAsync(label);
                     }
                 }
             }
-            catch(Exception ex)
+            catch (Exception ex)
             {
-                Debug.WriteLine($"LogProgress failed; {ex.Message}");
+                Debug.WriteLine($"LogProgress failed: {ex.Message}");
             }
         }
 
-        public static void Clear()
+        public static async Task ClearAsync()
         {
             try
             {
-                ThreadHelper.ThrowIfNotOnUIThread();
+                await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
 
-                lock(s_lock)
+                if (EnsurePaneLocked())
                 {
-                    if(EnsurePaneLocked())
-                    {
-                        s_pane.Clear();
-                    }
+                    s_pane.Clear();
                 }
             }
-            catch(Exception ex)
+            catch (Exception ex)
             {
                 Debug.WriteLine($"Logger.Clear failed: {ex.Message}");
             }
         }
 
-        public static void Activate()
+        public static async Task ActivateAsync()
         {
             try
             {
-                ThreadHelper.ThrowIfNotOnUIThread();
+                await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
 
-                lock(s_lock)
+                if (EnsurePaneLocked())
                 {
-                    if(EnsurePaneLocked())
-                    {
-                        s_pane.Activate();
-                    }
+                    s_pane.Activate();
                 }
             }
-            catch(Exception ex)
+            catch (Exception ex)
             {
                 Debug.WriteLine($"Logger.Activate failed: {ex.Message}");
             }
@@ -223,7 +214,9 @@ namespace CSVTranslationLookup
 
         private static bool EnsurePaneLocked()
         {
-            if(!s_initialzed)
+            ThreadHelper.ThrowIfNotOnUIThread();
+
+            if (!s_initialized)
             {
                 return false;
             }
@@ -235,20 +228,19 @@ namespace CSVTranslationLookup
             }
 
             // Panel already exists
-            if(s_pane != null)
+            if (s_pane != null)
             {
                 return true;
             }
 
             // Try to create pane
+            // Note: Caller must already be on UI thread
             try
             {
-                ThreadHelper.ThrowIfNotOnUIThread();
-
                 Guid guid = Guid.NewGuid();
                 IVsOutputWindow output = (IVsOutputWindow)s_provider.GetService(typeof(SVsOutputWindow));
 
-                if(output == null)
+                if (output == null)
                 {
                     s_paneCreationFailed = true;
                     Debug.WriteLine("Logger: Failed to get IVsOutputWindow service");
@@ -256,15 +248,15 @@ namespace CSVTranslationLookup
                 }
 
                 int hr1 = output.CreatePane(ref guid, s_name, 1, 1);
-                if(hr1 != 0)
+                if (hr1 != 0)
                 {
                     s_paneCreationFailed = true;
-                    Debug.WriteLine($"Logger: CraePane failed with HRESULT: ox{hr1:X8}");
+                    Debug.WriteLine($"Logger: CreatePane failed with HRESULT: 0x{hr1:X8}");
                     return false;
                 }
 
                 int hr2 = output.GetPane(ref guid, out s_pane);
-                if(hr2 != 0)
+                if (hr2 != 0)
                 {
                     s_paneCreationFailed = true;
                     Debug.WriteLine($"Logger: GetPane failed with HRESULT: 0x{hr2:X8}");
@@ -273,10 +265,54 @@ namespace CSVTranslationLookup
 
                 return true;
             }
-            catch(Exception ex)
+            catch (Exception ex)
             {
                 s_paneCreationFailed = true;
                 Debug.WriteLine($"Logger: Exception creating output pane: {ex.Message}");
+                return false;
+            }
+        }
+
+        private static bool EnsureStatusBarLocked()
+        {
+            ThreadHelper.ThrowIfNotOnUIThread();
+
+            if (!s_initialized)
+            {
+                return false;
+            }
+
+            // If we already failed to create status bar, don't keep trying
+            if (s_statusBarCreationFailed)
+            {
+                return false;
+            }
+
+            // Status bar already exists
+            if (s_statusBar != null)
+            {
+                return true;
+            }
+
+            // Try to get status bar service
+            // Note: Caller must already be on UI thread
+            try
+            {
+                s_statusBar = (IVsStatusbar)s_provider.GetService(typeof(SVsStatusbar));
+
+                if (s_statusBar == null)
+                {
+                    s_statusBarCreationFailed = true;
+                    Debug.WriteLine("Logger: Failed to get IVsStatusbar service");
+                    return false;
+                }
+
+                return true;
+            }
+            catch (Exception ex)
+            {
+                s_statusBarCreationFailed = true;
+                Debug.WriteLine($"Logger: Exception getting status bar: {ex.Message}");
                 return false;
             }
         }

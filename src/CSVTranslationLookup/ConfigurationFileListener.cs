@@ -6,7 +6,6 @@ using System;
 using System.ComponentModel.Composition;
 using System.IO;
 using CSVTranslationLookup.Configuration;
-using CSVTranslationLookup.Utilities;
 using Microsoft.VisualStudio.Editor;
 using Microsoft.VisualStudio.Text;
 using Microsoft.VisualStudio.Text.Editor;
@@ -117,12 +116,10 @@ namespace CSVTranslationLookup.FIleListeners
                 }
                 catch (Exception ex)
                 {
-                    await ErrorHandler.HandleAsync(
-                        context: "processing saved configuration file",
-                        exception: ex,
-                        suggestion: "Check that csvconfig.json has valid JSON syntax and correct values.",
-                        showDialog: false
-                    );
+                    await Logger.LogBatchAsync(
+                        "[ERROR] Could not process saved configuration file.",
+                        $"[ERROR] {ex.Message}",
+                        $"[ERROR] Check that {Config.ConfigurationFilename} has valid JSON syntax and correct values.");
                 }
             }
         }

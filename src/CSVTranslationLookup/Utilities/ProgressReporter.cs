@@ -4,6 +4,7 @@
 
 using System;
 using System.Diagnostics;
+using System.Threading.Tasks;
 
 namespace CSVTranslationLookup.Utilities
 {
@@ -15,7 +16,7 @@ namespace CSVTranslationLookup.Utilities
     /// Visual Studio status bar. Automatically completes the operation when disposed if not
     /// already complete. Use within a using statement for automatic cleanup.
     /// </remarks>
-    internal class ProgressReporter : IDisposable
+    internal class ProgressReporter : IAsyncDisposable
     {
         /// <summary>
         /// The name of the operation being tracked.
@@ -107,8 +108,17 @@ namespace CSVTranslationLookup.Utilities
             }
         }
 
+        private ProgressReporter(string operationName, int totalItems, bool logProgress = false)
+        {
+            _operationName = operationName;
+            _totalItems = totalItems;
+            _logProgress = logProgress;
+            _completedItems = 0;
+            _stopWatch = Stopwatch.StartNew();
+        }
+
         /// <summary>
-        /// Initializes a new instance of the <see cref="ProgressReporter"/> class.
+        /// Asynchronously creates a new <see cref="ProgressReporter"/> instance.
         /// </summary>
         /// <param name="operationName">The name of the operation being performed.</param>
         /// <param name="totalItems">The total number of items to process.</param>
@@ -116,16 +126,11 @@ namespace CSVTranslationLookup.Utilities
         /// <remarks>
         /// The stopwatch starts immediately and initial progress is reported to the status bar.
         /// </remarks>
-        public ProgressReporter(string operationName, int totalItems, bool logProgress = false)
+        public static async Task<ProgressReporter> CreateAsync(string operationName, int totalItems, bool logProgress = false)
         {
-            _operationName = operationName;
-            _totalItems = totalItems;
-            _logProgress = logProgress;
-            _completedItems = 0;
-            _stopWatch = Stopwatch.StartNew();
-
-            // Start Progress in status par
-            UpdateProgress();
+            ProgressReporter reporter = new ProgressReporter(operationName, totalItems, logProgress);
+            await reporter.UpdateProgressAsync();
+            return reporter;
         }
 
         /// <summary>
@@ -137,16 +142,16 @@ namespace CSVTranslationLookup.Utilities
         /// If <paramref name="itemName"/> is provided and logging is enabled, a detailed progress
         /// entry is written to the output window.
         /// </remarks>
-        public void ReportProgress(string itemName = null)
+        public async Task ReportProgressAsync(string itemName = null)
         {
             _completedItems++;
 
             if (_logProgress && !string.IsNullOrEmpty(itemName))
             {
-                Logger.Log($"[{_completedItems}/{_totalItems}] Processing: {itemName}");
+                await Logger.LogAsync($"[{_completedItems}/{_totalItems}] Processing: {itemName}");
             }
 
-            UpdateProgress();
+            await UpdateProgressAsync();
         }
 
         /// <summary>
@@ -156,10 +161,10 @@ namespace CSVTranslationLookup.Utilities
         /// <remarks>
         /// Use this overload when processing items in batches to avoid excessive status bar updates.
         /// </remarks>
-        public void ReportProgress(int count)
+        public async Task ReportProgressAsync(int count)
         {
             _completedItems += count;
-            UpdateProgress();
+            await UpdateProgressAsync();
         }
 
         /// <summary>
@@ -170,15 +175,15 @@ namespace CSVTranslationLookup.Utilities
         /// and clears the logger progress indicator. This method is called automatically by
         /// <see cref="Dispose"/> if not already complete.
         /// </remarks>
-        public void Complete()
+        public async Task CompleteAsync()
         {
             _stopWatch.Stop();
 
             string message = $"{_operationName} complete: {_completedItems} items in {FormatElapsedTime()}";
 
-            Logger.Log(message);
-            CSVTranslationLookupPackage.StatusTextAsync(message);
-            Logger.LogProgress(false);
+            await Logger.LogAsync(message);
+            await CSVTranslationLookupPackage.StatusTextAsync(message);
+            await Logger.LogProgressAsync(false);
         }
 
         /// <summary>
@@ -188,15 +193,15 @@ namespace CSVTranslationLookup.Utilities
         /// Stops the stopwatch, logs a cancellation message showing partial progress,
         /// updates the status bar, and clears the logger progress indicator.
         /// </remarks>
-        public void Cancel()
+        public async Task CancelAsync()
         {
             _stopWatch.Stop();
 
             string message = $"{_operationName} cancelled after processing {_completedItems}/{_totalItems} items";
 
-            Logger.Log(message);
-            CSVTranslationLookupPackage.StatusTextAsync(message);
-            Logger.LogProgress(false);
+            await Logger.LogAsync(message);
+            await CSVTranslationLookupPackage.StatusTextAsync(message);
+            await Logger.LogProgressAsync(false);
         }
 
         /// <summary>
@@ -206,21 +211,21 @@ namespace CSVTranslationLookup.Utilities
         /// When <see cref="TotalItems"/> is greater than 0, displays progress as a fraction and percentage.
         /// When <see cref="TotalItems"/> is 0, displays only the completed item count.
         /// </remarks>
-        private void UpdateProgress()
+        private async Task UpdateProgressAsync()
         {
             if (_totalItems > 0)
             {
                 int percentage = (_completedItems * 100) / _totalItems;
                 string label = $"{_operationName} ({_completedItems}/{_totalItems})";
 
-                Logger.LogProgress(true, label, _completedItems, _totalItems);
-                CSVTranslationLookupPackage.StatusTextAsync($"{label} - {percentage}%");
+                await Logger.LogProgressAsync(true, label, _completedItems, _totalItems);
+                await CSVTranslationLookupPackage.StatusTextAsync($"{label} - {percentage}%");
             }
             else
             {
                 string label = $"{_operationName} ({_completedItems} items)";
-                Logger.LogProgress(true, label, _completedItems, 100);
-                CSVTranslationLookupPackage.StatusTextAsync(label);
+                await Logger.LogProgressAsync(true, label, _completedItems, 100);
+                await CSVTranslationLookupPackage.StatusTextAsync(label);
             }
         }
 
@@ -256,13 +261,13 @@ namespace CSVTranslationLookup.Utilities
         /// If the stopwatch is still running when disposed, <see cref="Complete"/> is called automatically.
         /// This ensures progress indicators are cleared even if the operation wasn't explicitly completed.
         /// </remarks>
-        public void Dispose()
+        public async ValueTask DisposeAsync()
         {
             if (!_isDisposed)
             {
                 if (_stopWatch.IsRunning)
                 {
-                    Complete();
+                    await CompleteAsync();
                 }
                 _isDisposed = true;
             }

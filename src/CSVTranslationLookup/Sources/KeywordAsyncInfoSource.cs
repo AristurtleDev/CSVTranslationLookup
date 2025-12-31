@@ -5,7 +5,6 @@
 using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
-using CSVTranslationLookup.Common.Tokens;
 using CSVTranslationLookup.Common.Utilities;
 using CSVTranslationLookup.Providers;
 using CSVTranslationLookup.Services;
@@ -84,14 +83,14 @@ namespace CSVTranslationLookup.Sources
         /// or the system default if no application is configured. Line number substitution is supported
         /// via the {linenum} placeholder in the configured arguments.
         /// </remarks>
-        public Task<QuickInfoItem> GetQuickInfoItemAsync(IAsyncQuickInfoSession session, CancellationToken cancellationToken)
+        public async Task<QuickInfoItem> GetQuickInfoItemAsync(IAsyncQuickInfoSession session, CancellationToken cancellationToken)
         {
             SnapshotPoint? triggerPoint = session.GetTriggerPoint(_textBuffer.CurrentSnapshot);
 
 
             if (triggerPoint == null)
             {
-                return Task.FromResult<QuickInfoItem>(null);
+                return null;
             }
 
             ITextSnapshotLine line = triggerPoint.Value.GetContainingLine();
@@ -106,10 +105,18 @@ namespace CSVTranslationLookup.Sources
             string searchText = extent.Span.GetText().Replace("\"", "");
 
             CSVTranslationLookupService service = CSVTranslationLookupPackage.Package?.LookupService;
-            if (service == null || !service.TryGetToken(searchText, out Token token))
+
+            if (service == null)
             {
-                return Task.FromResult<QuickInfoItem>(null);
+                return null;
             }
+
+            var result = await service.TryGetTokenAsync(searchText);
+            if (!result.success)
+            {
+                return null;
+            }
+
 
             // Create UI element showing the translation key
             ContainerElement keyElement =
@@ -124,7 +131,7 @@ namespace CSVTranslationLookup.Sources
                 new ContainerElement(
                     ContainerElementStyle.Wrapped,
                     new ImageElement(_messageBubbleIcon),
-                    ClassifiedTextElement.CreatePlainText(token.Content)
+                    ClassifiedTextElement.CreatePlainText(result.token.Content)
                     );
 
             // Create hyperlink to open the CSV file containing this translation
@@ -132,7 +139,7 @@ namespace CSVTranslationLookup.Sources
                 new ContainerElement(
                     ContainerElementStyle.Wrapped,
                     new ImageElement(_tableIcon),
-                    ClassifiedTextElement.CreateHyperlink("Open Containing CSV", token.FileName, () =>
+                    ClassifiedTextElement.CreateHyperlink("Open Containing CSV", result.token.FileName, () =>
                     {
                         ProcessStartInfo startInfo = new ProcessStartInfo();
 
@@ -146,21 +153,21 @@ namespace CSVTranslationLookup.Sources
                             }
 
                             startInfo.FileName = CSVTranslationLookupService.Config.OpenWith;
-                            startInfo.Arguments = token.FileName;
+                            startInfo.Arguments = result.token.FileName;
 
                             // Apply additional arguments with line number substitution
                             string additionalArguments = CSVTranslationLookupService.Config.Arguments;
                             if (!string.IsNullOrEmpty(additionalArguments))
                             {
                                 // Replace {linenum} placeholder with actual line number from token
-                                additionalArguments = additionalArguments.Replace("{linenum}", $"{token.LineNumber}");
+                                additionalArguments = additionalArguments.Replace("{linenum}", $"{result.token.LineNumber}");
                                 startInfo.Arguments += $" {additionalArguments}";
                             }
                         }
                         else
                         {
                             // No custom application configured, open with system default
-                            startInfo.FileName = token.FileName;
+                            startInfo.FileName = result.token.FileName;
                         }
 
                         Process process = new Process();
@@ -173,7 +180,7 @@ namespace CSVTranslationLookup.Sources
 
             // Create tracking span so the Quick Info follows the text if edits occur
             ITrackingSpan trackingSpan = snapShot.CreateTrackingSpan(extent.Span.Start, searchText.Length, SpanTrackingMode.EdgeInclusive);
-            return Task.FromResult(new QuickInfoItem(trackingSpan, container));
+            return new QuickInfoItem(trackingSpan, container);
         }
 
         /// <inheritdoc />

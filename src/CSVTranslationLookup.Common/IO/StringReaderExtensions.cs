@@ -25,7 +25,7 @@ namespace CSVTranslationLookup.Common.IO
         /// <remarks>
         /// Consecutive newline characters (\r and \n in any combination) are consolidated into a single
         /// line break in the output. This normalization handles different line ending formats (Windows CRLF,
-        /// Unix LF, legacy Mac CR) consistently.
+        /// Unix LF, legacy Mac CR) consistently.gkds
         /// </remarks>
         public static string ReadTo(this StringReader reader, char character)
         {

@@ -9,8 +9,6 @@ using System.Threading.Tasks;
 using Community.VisualStudio.Toolkit;
 using CSVTranslationLookup.Helpers;
 using CSVTranslationLookup.Services;
-using EnvDTE;
-using EnvDTE80;
 using Microsoft.VisualStudio;
 using Microsoft.VisualStudio.Shell;
 using Microsoft.VisualStudio.Shell.Events;
@@ -28,7 +26,7 @@ namespace CSVTranslationLookup
     /// This package initializes the translation lookup service, monitors solution open events,
     /// and provides shared access to Visual Studio services. It automatically loads when a solution
     /// is opened (including when no solution is loaded) and searches for configuration files in
-    /// solution folders
+    /// solution folders.
     /// </remarks>
     [PackageRegistration(UseManagedResourcesOnly = true, AllowsBackgroundLoading = true)]
     [ProvideAutoLoad(VSConstants.UICONTEXT.NoSolution_string, PackageAutoLoadFlags.BackgroundLoad)]
@@ -37,11 +35,6 @@ namespace CSVTranslationLookup
     [Guid(PackageGuids.CSVTranslationLookupString)]
     public sealed class CSVTranslationLookupPackage : ToolkitPackage
     {
-        /// <summary>
-        /// Cached reference to the Visual Studio DTE automation object.
-        /// </summary>
-        private static DTE2 s_dte;
-
         /// <summary>
         /// Cached reference to the Visual Studio status bar service.
         /// </summary>
@@ -56,22 +49,6 @@ namespace CSVTranslationLookup
         /// Gets the singleton instance of this package.
         /// </summary>
         public static CSVTranslationLookupPackage Package { get; private set; }
-
-        /// <summary>
-        /// Gets the Visual Studio DTE automation object.
-        /// </summary>
-        public static DTE2 DTE
-        {
-            get
-            {
-                if (s_dte == null)
-                {
-                    s_dte = GetGlobalService(typeof(DTE)) as DTE2;
-                }
-
-                return s_dte;
-            }
-        }
 
         /// <summary>
         /// Gets the CSV translation lookup service.
@@ -108,7 +85,7 @@ namespace CSVTranslationLookup
             }
 
             ShellSolutionEvents.OnAfterOpenSolution += (sender, args) => JoinableTaskFactory.RunAsync(() => HandleOpenSolutionAsync(sender, args));
-            Logger.Initialize(this, Vsix.Name);
+            await Logger.InitializeAsync(this, Vsix.Name);
         }
 
         /// <summary>
@@ -138,7 +115,7 @@ namespace CSVTranslationLookup
         {
             await JoinableTaskFactory.SwitchToMainThreadAsync();
             IVsSolution solutionService = await GetServiceAsync(typeof(SVsSolution)) as IVsSolution;
-            ErrorHandler.ThrowOnFailure(solutionService.GetProperty((int)__VSPROPID.VSPROPID_IsSolutionOpen, out object value));
+            Microsoft.VisualStudio.ErrorHandler.ThrowOnFailure(solutionService.GetProperty((int)__VSPROPID.VSPROPID_IsSolutionOpen, out object value));
             return value is bool isSolutionOpen && isSolutionOpen;
         }
 
@@ -155,7 +132,8 @@ namespace CSVTranslationLookup
         {
             //  Search for an existing configuration file in any projects within the solution.
             //  If one is found, process it to begin with.
-            if (SolutionHelpers.TryGetExistingConfigFile(out string configFile))
+            var (found, configFile) = await SolutionHelpers.TryGetExistingConfigFileAsync();
+            if (found)
             {
                 await _lookupService?.ProcessConfigAsync(configFile);
             }

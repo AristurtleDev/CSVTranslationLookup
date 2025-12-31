@@ -2,7 +2,6 @@
 // Licensed under the MIT license.
 // See LICENSE file in the project root for full license information.
 
-using System;
 using System.Collections.Generic;
 using System.Text;
 using CSVTranslationLookup.Common.Text;
@@ -95,10 +94,10 @@ namespace CSVTranslationLookup.Configuration
             StringBuilder lines = StringBuilderCache.Get();
 
 
-            if(_errors.Count > 0)
+            if (_errors.Count > 0)
             {
                 lines.AppendLine("Configuration Errors:");
-                foreach(string error in _errors)
+                foreach (string error in _errors)
                 {
                     lines.AppendLine($"    - {error}");
                 }
@@ -106,10 +105,10 @@ namespace CSVTranslationLookup.Configuration
                 lines.AppendLine();
             }
 
-            if(_warnings.Count > 0)
+            if (_warnings.Count > 0)
             {
                 lines.AppendLine("Configuration Warnings:");
-                foreach(string warning in _warnings)
+                foreach (string warning in _warnings)
                 {
                     lines.AppendLine($"    - {warning}");
                 }
@@ -137,7 +136,7 @@ namespace CSVTranslationLookup.Configuration
         {
             if (IsValid)
             {
-                if(_warnings.Count > 0)
+                if (_warnings.Count > 0)
                 {
                     return $"Configuration valid with {_warnings.Count} warning(s)";
                 }

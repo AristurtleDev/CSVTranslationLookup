@@ -163,7 +163,7 @@ namespace CSVTranslationLookup.Configuration
                 catch (JsonException ex)
                 {
                     validationResult = new ConfigValidationResult();
-                    validationResult.AddError($"INvalid JSON in configuration file: {ex.Message}");
+                    validationResult.AddError($"Invalid JSON in configuration file: {ex.Message}");
                     return null;
                 }
 
