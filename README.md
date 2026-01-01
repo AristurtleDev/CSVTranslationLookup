@@ -39,7 +39,7 @@ Once you have created this file, you can copy and paste the following as the def
     "arguments": "",
     "fallBackSuffixes": [],
     "delimiter": ",",
-    "quote", "\""
+    "quote": "\""
 }
 ```
 
@@ -59,3 +59,4 @@ Once the file is saved for the first time, the extension will automatically begi
 
 ## License
 This is licensed under the MIT License. See [License](LICENSE) for full license text.
+
